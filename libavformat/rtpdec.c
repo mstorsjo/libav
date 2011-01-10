@@ -112,6 +112,8 @@ RTPDynamicProtocolHandler *ff_rtp_handler_find_by_id(int id,
 static int rtcp_parse_packet(RTPDemuxContext *s, const unsigned char *buf, int len)
 {
     int payload_len;
+    uint64_t ntp_time;
+    uint32_t rtp_ts;
     while (len >= 4) {
         payload_len = FFMIN(len, (AV_RB16(buf + 2) + 1) * 4);
 
@@ -122,12 +124,27 @@ static int rtcp_parse_packet(RTPDemuxContext *s, const unsigned char *buf, int l
                 return AVERROR_INVALIDDATA;
             }
 
-            s->last_rtcp_ntp_time = AV_RB64(buf + 8);
-            s->last_rtcp_timestamp = AV_RB32(buf + 16);
+            ntp_time = AV_RB64(buf + 8);
+            rtp_ts   = AV_RB32(buf + 16);
+            if (!s->base_timestamp) {
+                s->base_timestamp = rtp_ts;
+                s->last_rtcp_timestamp = s->base_timestamp + s->rtcp_ts_offset;
+            }
+            if (s->last_rtcp_ntp_time != AV_NOPTS_VALUE) {
+                int64_t ntp_diff = av_rescale(ntp_time - s->last_rtcp_ntp_time,
+                                       s->st->time_base.den,
+                                       (uint64_t)s->st->time_base.num << 32);
+                int64_t rtp_diff = rtp_ts - s->last_rtcp_timestamp;
+                int64_t diff = ntp_diff - rtp_diff;
+                if (diff < 0) {
+                    s->adjust_offset = 1;
+                    s->rtcp_ts_offset -= diff;
+                }
+            }
+            s->last_rtcp_ntp_time = ntp_time;
+            s->last_rtcp_timestamp = rtp_ts;
             if (s->first_rtcp_ntp_time == AV_NOPTS_VALUE) {
                 s->first_rtcp_ntp_time = s->last_rtcp_ntp_time;
-                if (!s->base_timestamp)
-                    s->base_timestamp = s->last_rtcp_timestamp;
                 s->rtcp_ts_offset = s->last_rtcp_timestamp - s->base_timestamp;
             }
 

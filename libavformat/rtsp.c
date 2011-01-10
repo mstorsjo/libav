@@ -1772,6 +1772,27 @@ int ff_rtsp_fetch_packet(AVFormatContext *s, AVPacket *pkt)
                     }
                 }
             }
+            if (rtpctx->adjust_offset) {
+                int i;
+                AVStream *st = NULL;
+                if (rtsp_st->stream_index >= 0)
+                    st = s->streams[rtsp_st->stream_index];
+                for (i = 0; i < rt->nb_rtsp_streams; i++) {
+                    RTPDemuxContext *rtpctx2 = rt->rtsp_streams[i]->transport_priv;
+                    AVStream *st2 = NULL;
+                    if (rt->rtsp_streams[i]->stream_index >= 0)
+                        st2 = s->streams[rt->rtsp_streams[i]->stream_index];
+                    if (rtpctx2 && st && st2) {
+                        int64_t orig_offset = rtpctx2->rtcp_ts_offset;
+                        rtpctx2->rtcp_ts_offset = av_rescale_q(
+                            rtpctx->rtcp_ts_offset, st->time_base,
+                            st2->time_base);
+                        rtpctx2->rtcp_ts_offset = FFMAX(rtpctx2->rtcp_ts_offset,
+                                                        orig_offset);
+                    }
+                }
+                rtpctx->adjust_offset = 0;
+            }
             if (ret == -RTCP_BYE) {
                 rt->nb_byes++;
 
