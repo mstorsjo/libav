@@ -419,6 +419,10 @@ ff_rtp_parse_set_dynamic_protocol(RTPDemuxContext *s, PayloadContext *ctx,
  */
 static void finalize_packet(RTPDemuxContext *s, AVPacket *pkt, uint32_t timestamp)
 {
+    if (!s->base_timestamp && timestamp != RTP_NOTS_VALUE) {
+        s->base_timestamp = timestamp;
+        s->last_rtcp_timestamp = s->base_timestamp + s->rtcp_ts_offset;
+    }
     if (pkt->pts != AV_NOPTS_VALUE || pkt->dts != AV_NOPTS_VALUE)
         return; /* Timestamp already set by depacketizer */
     if (s->last_rtcp_ntp_time != AV_NOPTS_VALUE && timestamp != RTP_NOTS_VALUE) {
@@ -435,8 +439,6 @@ static void finalize_packet(RTPDemuxContext *s, AVPacket *pkt, uint32_t timestam
     }
     if (timestamp == RTP_NOTS_VALUE)
         return;
-    if (!s->base_timestamp)
-        s->base_timestamp = timestamp;
     pkt->pts = s->range_start_offset + timestamp - s->base_timestamp;
 }
 

@@ -1766,6 +1766,9 @@ int ff_rtsp_fetch_packet(AVFormatContext *s, AVPacket *pkt)
                         rtpctx2->rtcp_ts_offset = av_rescale_q(
                             rtpctx->rtcp_ts_offset, st->time_base,
                             st2->time_base);
+                        rtpctx2->last_rtcp_ntp_time = rtpctx2->first_rtcp_ntp_time;
+                        if (rtpctx2->base_timestamp)
+                            rtpctx2->last_rtcp_timestamp = rtpctx2->base_timestamp + rtpctx2->rtcp_ts_offset;
                     }
                 }
             }
