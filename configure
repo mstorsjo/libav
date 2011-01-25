@@ -2541,6 +2541,8 @@ case $target_os in
         ;;
     symbian)
         SLIBSUF=".dll"
+        # CSL GCC 2005q1 crashes on ffmpeg.c with -O3
+        speed_cflags='-O2'
         enable dos_paths
         add_cflags --include=$sysinclude/gcce/gcce.h -fvisibility=default
         add_cppflags -D__GCCE__ -D__SYMBIAN32__ -DSYMBIAN_OE_POSIX_SIGNALS
