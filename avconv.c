@@ -876,7 +876,7 @@ need_realloc:
                 av_assert0(ost->audio_resample);
                 av_log(NULL, AV_LOG_VERBOSE, "compensating audio timestamp drift:%f compensation:%d in:%d\n",
                        delta, comp, enc->sample_rate);
-//                fprintf(stderr, "drift:%f len:%d opts:%"PRId64" ipts:%"PRId64" fifo:%d\n", delta, -1, ost->sync_opts, (int64_t)(get_sync_ipts(ost) * enc->sample_rate), av_fifo_size(ost->fifo)/(ost->st->codec->channels * 2));
+//                fprintf(stdout, "drift:%f len:%d opts:%"PRId64" ipts:%"PRId64" fifo:%d\n", delta, -1, ost->sync_opts, (int64_t)(get_sync_ipts(ost) * enc->sample_rate), av_fifo_size(ost->fifo)/(ost->st->codec->channels * 2));
                 av_resample_compensate(*(struct AVResampleContext**)ost->resample, comp, enc->sample_rate);
             }
         }
@@ -1186,7 +1186,7 @@ static void do_video_out(AVFormatContext *s,
                 ost->sync_opts= lrintf(sync_ipts);
         }else if (vdelta > 1.1)
             nb_frames = lrintf(vdelta);
-//fprintf(stderr, "vdelta:%f, ost->sync_opts:%"PRId64", ost->sync_ipts:%f nb_frames:%d\n", vdelta, ost->sync_opts, get_sync_ipts(ost), nb_frames);
+//fprintf(stdout, "vdelta:%f, ost->sync_opts:%"PRId64", ost->sync_ipts:%f nb_frames:%d\n", vdelta, ost->sync_opts, get_sync_ipts(ost), nb_frames);
         if (nb_frames == 0){
             ++nb_frames_drop;
             av_log(NULL, AV_LOG_VERBOSE, "*** drop!\n");
@@ -1272,7 +1272,7 @@ static void do_video_out(AVFormatContext *s,
                 write_frame(s, &pkt, ost->st->codec, ost->bitstream_filters);
                 *frame_size = ret;
                 video_size += ret;
-                //fprintf(stderr,"\nFrame: %3d size: %5d type: %d",
+                //fprintf(stdout,"\nFrame: %3d size: %5d type: %d",
                 //        enc->frame_number-1, ret, enc->pict_type);
                 /* if two pass, output log */
                 if (ost->logfile && enc->stats_out) {
@@ -1434,7 +1434,7 @@ static void print_report(OutputFile *output_files,
 
     av_log(NULL, AV_LOG_INFO, "%s    \r", buf);
 
-    fflush(stderr);
+    fflush(stdout);
 
     if (is_last_report) {
         int64_t raw= audio_size + video_size + extra_size;
@@ -2509,7 +2509,7 @@ static int transcode(OutputFile *output_files,
         if(pkt.dts != AV_NOPTS_VALUE)
             pkt.dts *= ist->ts_scale;
 
-//        fprintf(stderr, "next:%"PRId64" dts:%"PRId64" off:%"PRId64" %d\n", ist->next_pts, pkt.dts, input_files[ist->file_index].ts_offset, ist->st->codec->codec_type);
+//        fprintf(stdout, "next:%"PRId64" dts:%"PRId64" off:%"PRId64" %d\n", ist->next_pts, pkt.dts, input_files[ist->file_index].ts_offset, ist->st->codec->codec_type);
         if (pkt.dts != AV_NOPTS_VALUE && ist->next_pts != AV_NOPTS_VALUE
             && (is->iformat->flags & AVFMT_TS_DISCONT)) {
             int64_t pkt_dts= av_rescale_q(pkt.dts, ist->st->time_base, AV_TIME_BASE_Q);
@@ -2524,7 +2524,7 @@ static int transcode(OutputFile *output_files,
             }
         }
 
-        //fprintf(stderr,"read #%d.%d size=%d\n", ist->file_index, ist->st->index, pkt.size);
+        //fprintf(stdout,"read #%d.%d size=%d\n", ist->file_index, ist->st->index, pkt.size);
         if (output_packet(ist, output_streams, nb_output_streams, &pkt) < 0) {
 
             av_log(NULL, AV_LOG_ERROR, "Error while decoding stream #%d:%d\n",
@@ -2906,15 +2906,15 @@ static void assert_file_overwrite(const char *filename)
          av_strstart(filename, "file:", NULL))) {
         if (avio_check(filename, 0) == 0) {
             if (!using_stdin) {
-                fprintf(stderr,"File '%s' already exists. Overwrite ? [y/N] ", filename);
-                fflush(stderr);
+                fprintf(stdout,"File '%s' already exists. Overwrite ? [y/N] ", filename);
+                fflush(stdout);
                 if (!read_yesno()) {
-                    fprintf(stderr, "Not overwriting - exiting\n");
+                    fprintf(stdout, "Not overwriting - exiting\n");
                     exit_program(1);
                 }
             }
             else {
-                fprintf(stderr,"File '%s' already exists. Exiting.\n", filename);
+                fprintf(stdout,"File '%s' already exists. Exiting.\n", filename);
                 exit_program(1);
             }
         }
@@ -4249,7 +4249,7 @@ int main(int argc, char **argv)
 
     /* file converter / grab */
     if (nb_output_files <= 0) {
-        fprintf(stderr, "At least one output file must be specified\n");
+        fprintf(stdout, "At least one output file must be specified\n");
         exit_program(1);
     }
 
