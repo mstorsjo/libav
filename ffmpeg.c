@@ -495,6 +495,8 @@ void exit_program(int ret)
 #endif
     avformat_network_deinit();
 
+    getchar();
+
     if (received_sigterm) {
         fprintf(stdout,
             "Received signal %d: terminating.\n",
