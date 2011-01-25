@@ -1708,7 +1708,7 @@ static void print_report(int is_last_report, int64_t timer_start)
 
     av_log(NULL, AV_LOG_INFO, "%s    \r", buf);
 
-    fflush(stderr);
+    fflush(stdout);
 
     if (is_last_report) {
         int64_t raw= audio_size + video_size + extra_size;
@@ -3040,7 +3040,7 @@ static int transcode(void)
         if (pkt.dts != AV_NOPTS_VALUE)
             pkt.dts *= ist->ts_scale;
 
-        //fprintf(stderr, "next:%"PRId64" dts:%"PRId64" off:%"PRId64" %d\n",
+        //fprintf(stdout, "next:%"PRId64" dts:%"PRId64" off:%"PRId64" %d\n",
         //        ist->next_dts,
         //        pkt.dts, input_files[ist->file_index].ts_offset,
         //        ist->st->codec->codec_type);
@@ -3059,7 +3059,7 @@ static int transcode(void)
             }
         }
 
-        // fprintf(stderr,"read #%d.%d size=%d\n", ist->file_index, ist->st->index, pkt.size);
+        // fprintf(stdout,"read #%d.%d size=%d\n", ist->file_index, ist->st->index, pkt.size);
         if (output_packet(ist, &pkt) < 0 || poll_filters() < 0) {
             av_log(NULL, AV_LOG_ERROR, "Error while decoding stream #%d:%d\n",
                    ist->file_index, ist->st->index);
@@ -3505,15 +3505,15 @@ static void assert_file_overwrite(const char *filename)
          av_strstart(filename, "file:", NULL))) {
         if (avio_check(filename, 0) == 0) {
             if (!using_stdin) {
-                fprintf(stderr,"File '%s' already exists. Overwrite ? [y/N] ", filename);
-                fflush(stderr);
+                fprintf(stdout,"File '%s' already exists. Overwrite ? [y/N] ", filename);
+                fflush(stdout);
                 if (!read_yesno()) {
-                    fprintf(stderr, "Not overwriting - exiting\n");
+                    fprintf(stdout, "Not overwriting - exiting\n");
                     exit_program(1);
                 }
             }
             else {
-                fprintf(stderr,"File '%s' already exists. Exiting.\n", filename);
+                fprintf(stdout,"File '%s' already exists. Exiting.\n", filename);
                 exit_program(1);
             }
         }
@@ -4998,7 +4998,7 @@ int main(int argc, char **argv)
 
     /* file converter / grab */
     if (nb_output_files <= 0) {
-        fprintf(stderr, "At least one output file must be specified\n");
+        fprintf(stdout, "At least one output file must be specified\n");
         exit_program(1);
     }
 

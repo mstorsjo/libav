@@ -47,8 +47,8 @@ static HANDLE con;
 #define reset_color() SetConsoleTextAttribute(con, attr_orig)
 #else
 static const uint8_t color[] = { 0x41, 0x41, 0x11, 0x03, 9, 0x02, 0x06 };
-#define set_color(x)  fprintf(stderr, "\033[%d;3%dm", color[x] >> 4, color[x]&15)
-#define reset_color() fprintf(stderr, "\033[0m")
+#define set_color(x)  fprintf(stdout, "\033[%d;3%dm", color[x] >> 4, color[x]&15)
+#define reset_color() fprintf(stdout, "\033[0m")
 #endif
 static int use_color = -1;
 
@@ -79,7 +79,7 @@ static void colored_fputs(int level, const char *str)
     if (use_color) {
         set_color(level);
     }
-    fputs(str, stderr);
+    fputs(str, stdout);
     if (use_color) {
         reset_color();
     }
@@ -128,11 +128,11 @@ void av_log_default_callback(void* ptr, int level, const char* fmt, va_list vl)
         !strncmp(line, prev, sizeof line)) {
         count++;
         if (is_atty == 1)
-            fprintf(stderr, "    Last message repeated %d times\r", count);
+            fprintf(stdout, "    Last message repeated %d times\r", count);
         return;
     }
     if (count > 0) {
-        fprintf(stderr, "    Last message repeated %d times\n", count);
+        fprintf(stdout, "    Last message repeated %d times\n", count);
         count = 0;
     }
     colored_fputs(av_clip(level >> 3, 0, 6), line);
