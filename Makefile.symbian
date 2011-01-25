@@ -1,0 +1,77 @@
+CPPFLAGS = -I$(EPOCROOT)/epoc32/include -I$(EPOCROOT)/epoc32/include/stdapis -D__GCCE__ -D__SYMBIAN32__
+CFLAGS = --include=$(EPOCROOT)/epoc32/include/gcce/gcce.h -march=armv5t -mapcs -msoft-float
+# The default segment offsets are -Ttext 0x8000 -Tdata 0x400000,
+# but libavcodec may be large enough not to fit below that data
+# segment offset.
+LDFLAGS = -Wl,--target1-abs,--no-undefined -Wl,-Ttext,0x8000,-Tdata,0x1000000 -shared -L${EPOCROOT}/epoc32/release/armv5/lib -L${EPOCROOT}/epoc32/release/armv5/urel -l:usrt2_2.lib -l:dfpaeabi.dso -l:drtaeabi.dso -l:scppnwdl.dso -lsupc++ -lgcc -l:libc.dso -l:libm.dso -l:euser.dso
+LDFLAGS_EXE = -l:eexe.lib -l:libcrt0.lib --entry _E32Startup -u _E32Startup -u __GccGlueInit -static-libgcc
+LDFLAGS_DLL = -l:edll.lib --default-symver --entry _E32Dll -u _E32Dll
+CC = arm-none-symbianelf-gcc
+
+avconv_static.exe.elf: avconv.exe
+	cp $< $@
+
+libavutil.dll.elf: LIBS =
+
+libavcodec.dll.elf: LIBS = -l:libavutil.dso
+libavcodec.dll.elf: libavutil.dll
+
+libavformat.dll.elf: LIBS = -l:libavcodec.dso -l:libavutil.dso
+libavformat.dll.elf: libavcodec.dll libavutil.dll
+
+libswscale.dll.elf: LIBS = -l:libavutil.dso
+libswscale.dll.elf: libavutil.dll
+
+libavfilter.dll.elf: LIBS = -l:libswscale.dso -l:libavresample.dso -l:libavutil.dso -l:libavformat.dso -l:libavcodec.dso
+libavfilter.dll.elf: libswscale.dll libavutil.dll libavformat.dll libavcodec.dll libavresample.dll
+
+libavdevice.dll.elf: LIBS = -l:libavformat.dso -l:libavcodec.dso -l:libavutil.dso
+libavdevice.dll.elf: libavformat.dll libavcodec.dll libavutil.dll
+
+libavresample.dll.elf: LIBS = -l:libavcodec.dso -l:libavutil.dso
+libavresample.dll.elf: libavcodec.dll libavutil.dll
+
+avconv_static.exe: UID=a000ffe6
+libavutil.dll: UID=a000ffe0
+libavcodec.dll: UID=a000ffe1
+libavformat.dll: UID=a000ffe2
+libavfilter.dll: UID=a000ffe3
+libavdevice.dll: UID=a000ffe4
+libswscale.dll: UID=a000ffe5
+libavresample.dll: UID=a000ffe7
+
+%.exe: %.exe.elf
+	elf2e32 --sid=0x$(UID) --uid1=0x1000007a --uid2=0x100039ce --uid3=0x$(UID) --targettype=EXE --elfinput=$< --output=$@ --linkas=$*\{000a0000\}\[$(UID)\].exe --heap=0x020000,0x8000000 --stack=0x14000 --libpath=$(EPOCROOT)/epoc32/release/armv5/urel --libpath=$(EPOCROOT)/epoc32/release/armv5/lib --capability=None --fpu=softvfp
+
+%.dll: %.dll.elf
+	elf2e32 --sid=0x$(UID) --uid1=0x10000079 --uid2=0x1000008d --uid3=0x$(UID) --targettype=DLL --elfinput=$< --output=$@ --dso=$(EPOCROOT)/epoc32/release/armv5/lib/$*.dso --defoutput=$*.def --linkas=$*\{000a0000\}\[$(UID)\].dll --libpath=$(EPOCROOT)/epoc32/release/armv5/urel --libpath=$(EPOCROOT)/epoc32/release/armv5/lib --capability=None --fpu=softvfp --dlldata
+
+%.dll.elf: %.a
+	$(CC) -o $@ -Wl,--whole-archive $< -Wl,--no-whole-archive $(LDFLAGS_DLL) $(LDFLAGS) $(LIBS)
+
+%.rsc: %.rss
+	cpp -nostdinc -undef $(CPPFLAGS) $< > $*.rpp
+	rcomp -u -s$*.rpp -o$@
+
+avconv_shared.exe: UID=a000ffe6
+avconv_shared.exe.elf: libavfilter.dll libavdevice.dll avconv.o cmdutils.o
+	$(CC) -o $@ avconv.o cmdutils.o $(LDFLAGS_EXE) $(LDFLAGS) -l:libavfilter.dso -l:libavdevice.dso -l:libavformat.dso -l:libavcodec.dso -l:libavutil.dso -l:libswscale.dso -l:libavresample.dso
+
+libavutil.a: libavutil/libavutil.a
+	cp $< $@
+libavcodec.a: libavcodec/libavcodec.a
+	cp $< $@
+libavformat.a: libavformat/libavformat.a
+	cp $< $@
+libavfilter.a: libavfilter/libavfilter.a
+	cp $< $@
+libavdevice.a: libavdevice/libavdevice.a
+	cp $< $@
+libswscale.a: libswscale/libswscale.a
+	cp $< $@
+libavresample.a: libavresample/libavresample.a
+	cp $< $@
+
+clean:
+	rm -f avconv_shared.exe avconv_static.exe *.dll *.elf *.a *.rsc *.def
+

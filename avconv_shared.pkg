@@ -1,0 +1,23 @@
+&EN
+
+#{"avconv"},(0xa000ffe6),1,0,0
+
+%{""}
+:""
+
+
+;Supports Series 60 v 3.0
+[0x101F7961], 0, 0, 0, {"Series60ProductID"}
+;Supports S60 v 5.0
+[0x1028315F], 0, 0, 0, {"Series60ProductID"}
+
+"avconv_shared.exe" - "c:\sys\bin\avconv.exe"
+"libavutil.dll" - "c:\sys\bin\libavutil.dll"
+"libavcodec.dll" - "c:\sys\bin\libavcodec.dll"
+"libavformat.dll" - "c:\sys\bin\libavformat.dll"
+"libavdevice.dll" - "c:\sys\bin\libavdevice.dll"
+"libavfilter.dll" - "c:\sys\bin\libavfilter.dll"
+"libswscale.dll" - "c:\sys\bin\libswscale.dll"
+"libavresample.dll" - "c:\sys\bin\libavresample.dll"
+;"avconv_reg.rsc" - "c:\private\10003a3f\import\apps\avconv_reg.rsc"
+
