@@ -1095,6 +1095,8 @@ void exit_program(int ret)
     avfilter_uninit();
     avformat_network_deinit();
 
+    getchar();
+
     if (received_sigterm) {
         av_log(NULL, AV_LOG_INFO, "Received signal %d: terminating.\n",
                (int) received_sigterm);
