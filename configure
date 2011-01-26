@@ -3093,7 +3093,9 @@ enabled extra_warnings && check_cflags -Winline
 # add some linker flags
 check_ldflags -Wl,--warn-common
 check_ldflags -Wl,-rpath-link=libswscale:libavfilter:libavdevice:libavformat:libavcodec:libavutil:libavresample
+if [ "$target_os" != "symbian" ]; then
 test_ldflags -Wl,-Bsymbolic && append SHFLAGS -Wl,-Bsymbolic
+fi
 
 enabled xmm_clobber_test &&                             \
     check_ldflags -Wl,--wrap,avcodec_open2              \
