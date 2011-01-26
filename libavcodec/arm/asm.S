@@ -58,7 +58,6 @@ ELF     .eabi_attribute 24, \val
 .endm
 
 .macro  preserve8 val=1
-ELF     .eabi_attribute 25, \val
 .endm
 
 .macro  function name, export=0
