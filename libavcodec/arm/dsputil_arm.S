@@ -107,9 +107,9 @@ function ff_put_pixels16_arm, export=1
         push            {r4-r11, lr}
         JMP_ALIGN       r5,  r1
 1:
-        ldm             r1,  {r4-r7}
+        ldmia           r1,  {r4-r7}
         add             r1,  r1,  r2
-        stm             r0,  {r4-r7}
+        stmia           r0,  {r4-r7}
         pld             [r1]
         subs            r3,  r3,  #1
         add             r0,  r0,  r2
@@ -117,34 +117,34 @@ function ff_put_pixels16_arm, export=1
         pop             {r4-r11, pc}
         .align 5
 2:
-        ldm             r1,  {r4-r8}
+        ldmia           r1,  {r4-r8}
         add             r1,  r1,  r2
         ALIGN_QWORD_D   1,   r9,  r10, r11, r12, r4,  r5,  r6,  r7,  r8
         pld             [r1]
         subs            r3,  r3,  #1
-        stm             r0,  {r9-r12}
+        stmia           r0,  {r9-r12}
         add             r0,  r0,  r2
         bne             2b
         pop             {r4-r11, pc}
         .align 5
 3:
-        ldm             r1,  {r4-r8}
+        ldmia           r1,  {r4-r8}
         add             r1,  r1,  r2
         ALIGN_QWORD_D   2,   r9,  r10, r11, r12, r4,  r5,  r6,  r7,  r8
         pld             [r1]
         subs            r3,  r3,  #1
-        stm             r0,  {r9-r12}
+        stmia           r0,  {r9-r12}
         add             r0,  r0,  r2
         bne             3b
         pop             {r4-r11, pc}
         .align 5
 4:
-        ldm             r1,  {r4-r8}
+        ldmia           r1,  {r4-r8}
         add             r1,  r1,  r2
         ALIGN_QWORD_D   3,   r9,  r10, r11, r12, r4,  r5,  r6,  r7,  r8
         pld             [r1]
         subs            r3,  r3,  #1
-        stm             r0,  {r9-r12}
+        stmia           r0,  {r9-r12}
         add             r0,  r0,  r2
         bne             4b
         pop             {r4-r11,pc}
@@ -159,44 +159,44 @@ function ff_put_pixels8_arm, export=1
         push            {r4-r5,lr}
         JMP_ALIGN       r5,  r1
 1:
-        ldm             r1,  {r4-r5}
+        ldmia           r1,  {r4-r5}
         add             r1,  r1,  r2
         subs            r3,  r3,  #1
         pld             [r1]
-        stm             r0,  {r4-r5}
+        stmia           r0,  {r4-r5}
         add             r0,  r0,  r2
         bne             1b
         pop             {r4-r5,pc}
         .align 5
 2:
-        ldm             r1,  {r4-r5, r12}
+        ldmia           r1,  {r4-r5, r12}
         add             r1,  r1,  r2
         ALIGN_DWORD     1,   r4,  r5,  r12
         pld             [r1]
         subs            r3,  r3,  #1
-        stm             r0,  {r4-r5}
+        stmia           r0,  {r4-r5}
         add             r0,  r0,  r2
         bne             2b
         pop             {r4-r5,pc}
         .align 5
 3:
-        ldm             r1,  {r4-r5, r12}
+        ldmia           r1,  {r4-r5, r12}
         add             r1,  r1,  r2
         ALIGN_DWORD     2,   r4,  r5,  r12
         pld             [r1]
         subs            r3,  r3,  #1
-        stm             r0,  {r4-r5}
+        stmia           r0,  {r4-r5}
         add             r0,  r0,  r2
         bne             3b
         pop             {r4-r5,pc}
         .align 5
 4:
-        ldm             r1,  {r4-r5, r12}
+        ldmia           r1,  {r4-r5, r12}
         add             r1,  r1,  r2
         ALIGN_DWORD     3,   r4,  r5,  r12
         pld             [r1]
         subs            r3,  r3,  #1
-        stm             r0,  {r4-r5}
+        stmia           r0,  {r4-r5}
         add             r0,  r0,  r2
         bne             4b
         pop             {r4-r5,pc}
@@ -212,51 +212,51 @@ function ff_put_pixels8_x2_arm, export=1
         ldr             r12, =0xfefefefe
         JMP_ALIGN       r5,  r1
 1:
-        ldm             r1,  {r4-r5, r10}
+        ldmia           r1,  {r4-r5, r10}
         add             r1,  r1,  r2
         ALIGN_DWORD_D   1,   r6,  r7,  r4,  r5,  r10
         pld             [r1]
         RND_AVG32       r8,  r9,  r4,  r5,  r6,  r7,  r12
         subs            r3,  r3,  #1
-        stm             r0,  {r8-r9}
+        stmia           r0,  {r8-r9}
         add             r0,  r0,  r2
         bne             1b
         pop             {r4-r10,pc}
         .align 5
 2:
-        ldm             r1,  {r4-r5, r10}
+        ldmia           r1,  {r4-r5, r10}
         add             r1,  r1,  r2
         ALIGN_DWORD_D   1,   r6,  r7,  r4,  r5,  r10
         ALIGN_DWORD_D   2,   r8,  r9,  r4,  r5,  r10
         pld             [r1]
         RND_AVG32       r4,  r5,  r6,  r7,  r8,  r9,  r12
         subs            r3,  r3,  #1
-        stm             r0,  {r4-r5}
+        stmia           r0,  {r4-r5}
         add             r0,  r0,  r2
         bne             2b
         pop             {r4-r10,pc}
         .align 5
 3:
-        ldm             r1,  {r4-r5, r10}
+        ldmia           r1,  {r4-r5, r10}
         add             r1,  r1,  r2
         ALIGN_DWORD_D   2,   r6,  r7,  r4,  r5,  r10
         ALIGN_DWORD_D   3,   r8,  r9,  r4,  r5,  r10
         pld             [r1]
         RND_AVG32       r4,  r5,  r6,  r7,  r8,  r9,  r12
         subs            r3,  r3,  #1
-        stm             r0,  {r4-r5}
+        stmia           r0,  {r4-r5}
         add             r0,  r0,  r2
         bne             3b
         pop             {r4-r10,pc}
         .align 5
 4:
-        ldm             r1,  {r4-r5, r10}
+        ldmia           r1,  {r4-r5, r10}
         add             r1,  r1,  r2
         ALIGN_DWORD_D   3,   r6,  r7,  r4,  r5,  r10
         pld             [r1]
         RND_AVG32       r8,  r9,  r6,  r7,  r5,  r10, r12
         subs            r3,  r3,  #1
-        stm             r0,  {r8-r9}
+        stmia           r0,  {r8-r9}
         add             r0,  r0,  r2
         bne             4b
         pop             {r4-r10,pc}
@@ -271,51 +271,51 @@ function ff_put_no_rnd_pixels8_x2_arm, export=1
         ldr             r12, =0xfefefefe
         JMP_ALIGN       r5,  r1
 1:
-        ldm             r1,  {r4-r5, r10}
+        ldmia           r1,  {r4-r5, r10}
         add             r1,  r1,  r2
         ALIGN_DWORD_D   1,   r6,  r7,  r4,  r5,  r10
         pld             [r1]
         NO_RND_AVG32    r8,  r9,  r4,  r5,  r6,  r7,  r12
         subs            r3,  r3,  #1
-        stm             r0,  {r8-r9}
+        stmia           r0,  {r8-r9}
         add             r0,  r0,  r2
         bne             1b
         pop             {r4-r10,pc}
         .align 5
 2:
-        ldm             r1,  {r4-r5, r10}
+        ldmia           r1,  {r4-r5, r10}
         add             r1,  r1,  r2
         ALIGN_DWORD_D   1,   r6,  r7,  r4,  r5,  r10
         ALIGN_DWORD_D   2,   r8,  r9,  r4,  r5,  r10
         pld             [r1]
         NO_RND_AVG32    r4,  r5,  r6,  r7,  r8,  r9,  r12
         subs            r3,  r3,  #1
-        stm             r0,  {r4-r5}
+        stmia           r0,  {r4-r5}
         add             r0,  r0,  r2
         bne             2b
         pop             {r4-r10,pc}
         .align 5
 3:
-        ldm             r1,  {r4-r5, r10}
+        ldmia           r1,  {r4-r5, r10}
         add             r1,  r1,  r2
         ALIGN_DWORD_D   2,   r6,  r7,  r4,  r5,  r10
         ALIGN_DWORD_D   3,   r8,  r9,  r4,  r5,  r10
         pld             [r1]
         NO_RND_AVG32    r4,  r5,  r6,  r7,  r8,  r9,  r12
         subs            r3,  r3,  #1
-        stm             r0,  {r4-r5}
+        stmia           r0,  {r4-r5}
         add             r0,  r0,  r2
         bne             3b
         pop             {r4-r10,pc}
         .align 5
 4:
-        ldm             r1,  {r4-r5, r10}
+        ldmia           r1,  {r4-r5, r10}
         add             r1,  r1,  r2
         ALIGN_DWORD_D   3,   r6,  r7,  r4,  r5,  r10
         pld             [r1]
         NO_RND_AVG32    r8,  r9,  r6,  r7,  r5,  r10, r12
         subs            r3,  r3,  #1
-        stm             r0,  {r8-r9}
+        stmia           r0,  {r8-r9}
         add             r0,  r0,  r2
         bne             4b
         pop             {r4-r10,pc}
@@ -333,89 +333,89 @@ function ff_put_pixels8_y2_arm, export=1
         ldr             r12, =0xfefefefe
         JMP_ALIGN       r5,  r1
 1:
-        ldm             r1,  {r4-r5}
+        ldmia           r1,  {r4-r5}
         add             r1,  r1,  r2
-6:      ldm             r1,  {r6-r7}
+6:      ldmia           r1,  {r6-r7}
         add             r1,  r1,  r2
         pld             [r1]
         RND_AVG32       r8,  r9,  r4,  r5,  r6,  r7,  r12
-        ldm             r1,  {r4-r5}
+        ldmia           r1,  {r4-r5}
         add             r1,  r1,  r2
-        stm             r0,  {r8-r9}
+        stmia           r0,  {r8-r9}
         add             r0,  r0,  r2
         pld             [r1]
         RND_AVG32       r8,  r9,  r6,  r7,  r4,  r5,  r12
         subs            r3,  r3,  #1
-        stm             r0,  {r8-r9}
+        stmia           r0,  {r8-r9}
         add             r0,  r0,  r2
         bne             6b
         pop             {r4-r11,pc}
         .align 5
 2:
-        ldm             r1,  {r4-r6}
+        ldmia           r1,  {r4-r6}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     1,   r4,  r5,  r6
-6:      ldm             r1,  {r7-r9}
+6:      ldmia           r1,  {r7-r9}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     1,   r7,  r8,  r9
         RND_AVG32       r10, r11, r4,  r5,  r7,  r8,  r12
-        stm             r0,  {r10-r11}
+        stmia           r0,  {r10-r11}
         add             r0,  r0,  r2
-        ldm             r1,  {r4-r6}
+        ldmia           r1,  {r4-r6}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     1,   r4,  r5,  r6
         subs            r3,  r3,  #1
         RND_AVG32       r10, r11, r7,  r8,  r4,  r5,  r12
-        stm             r0,  {r10-r11}
+        stmia           r0,  {r10-r11}
         add             r0,  r0,  r2
         bne             6b
         pop             {r4-r11,pc}
         .align 5
 3:
-        ldm             r1,  {r4-r6}
+        ldmia           r1,  {r4-r6}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     2,   r4,  r5,  r6
-6:      ldm             r1,  {r7-r9}
+6:      ldmia           r1,  {r7-r9}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     2,   r7,  r8,  r9
         RND_AVG32       r10, r11, r4,  r5,  r7,  r8,  r12
-        stm             r0,  {r10-r11}
+        stmia           r0,  {r10-r11}
         add             r0,  r0,  r2
-        ldm             r1,  {r4-r6}
+        ldmia           r1,  {r4-r6}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     2,   r4,  r5,  r6
         subs            r3,  r3,  #1
         RND_AVG32       r10, r11, r7,  r8,  r4,  r5,  r12
-        stm             r0,  {r10-r11}
+        stmia           r0,  {r10-r11}
         add             r0,  r0,  r2
         bne             6b
         pop             {r4-r11,pc}
         .align 5
 4:
-        ldm             r1,  {r4-r6}
+        ldmia           r1,  {r4-r6}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     3,   r4,  r5,  r6
-6:      ldm             r1,  {r7-r9}
+6:      ldmia           r1,  {r7-r9}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     3,   r7,  r8,  r9
         RND_AVG32       r10, r11, r4,  r5,  r7,  r8,  r12
-        stm             r0,  {r10-r11}
+        stmia           r0,  {r10-r11}
         add             r0,  r0,  r2
-        ldm             r1,  {r4-r6}
+        ldmia           r1,  {r4-r6}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     3,   r4,  r5,  r6
         subs            r3,  r3,  #1
         RND_AVG32       r10, r11, r7,  r8,  r4,  r5,  r12
-        stm             r0,  {r10-r11}
+        stmia           r0,  {r10-r11}
         add             r0,  r0,  r2
         bne             6b
         pop             {r4-r11,pc}
@@ -431,89 +431,89 @@ function ff_put_no_rnd_pixels8_y2_arm, export=1
         ldr             r12, =0xfefefefe
         JMP_ALIGN       r5,  r1
 1:
-        ldm             r1,  {r4-r5}
+        ldmia           r1,  {r4-r5}
         add             r1,  r1,  r2
-6:      ldm             r1,  {r6-r7}
+6:      ldmia           r1,  {r6-r7}
         add             r1,  r1,  r2
         pld             [r1]
         NO_RND_AVG32    r8,  r9,  r4,  r5,  r6,  r7,  r12
-        ldm             r1,  {r4-r5}
+        ldmia           r1,  {r4-r5}
         add             r1,  r1,  r2
-        stm             r0,  {r8-r9}
+        stmia           r0,  {r8-r9}
         add             r0,  r0,  r2
         pld             [r1]
         NO_RND_AVG32    r8,  r9,  r6,  r7,  r4,  r5,  r12
         subs            r3,  r3,  #1
-        stm             r0,  {r8-r9}
+        stmia           r0,  {r8-r9}
         add             r0,  r0,  r2
         bne             6b
         pop             {r4-r11,pc}
         .align 5
 2:
-        ldm             r1,  {r4-r6}
+        ldmia           r1,  {r4-r6}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     1,   r4,  r5,  r6
-6:      ldm             r1,  {r7-r9}
+6:      ldmia           r1,  {r7-r9}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     1,   r7,  r8,  r9
         NO_RND_AVG32    r10, r11, r4,  r5,  r7,  r8,  r12
-        stm             r0,  {r10-r11}
+        stmia           r0,  {r10-r11}
         add             r0,  r0,  r2
-        ldm             r1,  {r4-r6}
+        ldmia           r1,  {r4-r6}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     1,   r4,  r5,  r6
         subs            r3,  r3,  #1
         NO_RND_AVG32    r10, r11, r7,  r8,  r4,  r5,  r12
-        stm             r0,  {r10-r11}
+        stmia           r0,  {r10-r11}
         add             r0,  r0,  r2
         bne             6b
         pop             {r4-r11,pc}
         .align 5
 3:
-        ldm             r1,  {r4-r6}
+        ldmia           r1,  {r4-r6}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     2,   r4,  r5,  r6
-6:      ldm             r1,  {r7-r9}
+6:      ldmia           r1,  {r7-r9}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     2,   r7,  r8,  r9
         NO_RND_AVG32    r10, r11, r4,  r5,  r7,  r8,  r12
-        stm             r0,  {r10-r11}
+        stmia           r0,  {r10-r11}
         add             r0,  r0,  r2
-        ldm             r1,  {r4-r6}
+        ldmia           r1,  {r4-r6}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     2,   r4,  r5,  r6
         subs            r3,  r3,  #1
         NO_RND_AVG32    r10, r11, r7,  r8,  r4,  r5,  r12
-        stm             r0,  {r10-r11}
+        stmia           r0,  {r10-r11}
         add             r0,  r0,  r2
         bne             6b
         pop             {r4-r11,pc}
         .align 5
 4:
-        ldm             r1,  {r4-r6}
+        ldmia           r1,  {r4-r6}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     3,   r4,  r5,  r6
-6:      ldm             r1,  {r7-r9}
+6:      ldmia           r1,  {r7-r9}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     3,   r7,  r8,  r9
         NO_RND_AVG32    r10, r11, r4,  r5,  r7,  r8,  r12
-        stm             r0,  {r10-r11}
+        stmia           r0,  {r10-r11}
         add             r0,  r0,  r2
-        ldm             r1,  {r4-r6}
+        ldmia           r1,  {r4-r6}
         add             r1,  r1,  r2
         pld             [r1]
         ALIGN_DWORD     3,   r4,  r5,  r6
         subs            r3,  r3,  #1
         NO_RND_AVG32    r10, r11, r7,  r8,  r4,  r5,  r12
-        stm             r0,  {r10-r11}
+        stmia           r0,  {r10-r11}
         add             r0,  r0,  r2
         bne             6b
         pop             {r4-r11,pc}
@@ -526,11 +526,11 @@ endfunc
         @ l1=  (a & 0x03030303) + (b & 0x03030303) ?(+ 0x02020202)
         @ h1= ((a & 0xFCFCFCFCUL) >> 2) + ((b & 0xFCFCFCFCUL) >> 2)
 .if \align == 0
-        ldm             r1,  {r6-r8}
+        ldmia           r1,  {r6-r8}
 .elseif \align == 3
-        ldm             r1,  {r5-r7}
+        ldmia           r1,  {r5-r7}
 .else
-        ldm             r1,  {r8-r10}
+        ldmia           r1,  {r8-r10}
 .endif
         add             r1,  r1,  r2
         pld             [r1]
@@ -582,7 +582,7 @@ endfunc
         and             r5,  r14, r5,  lsr #2
         add             r4,  r4,  r6
         add             r5,  r5,  r7
-        stm             r0,  {r4-r5}
+        stmia           r0,  {r4-r5}
         add             r0,  r0,  r2
         bge             6b
         pop             {r4-r11,pc}
