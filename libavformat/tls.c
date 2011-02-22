@@ -55,6 +55,8 @@
 #include <poll.h>
 #endif
 
+#define CAFILE "/Users/martin/curl-ca-bundle.crt"
+
 typedef struct {
     const AVClass *class;
     URLContext *tcp;
