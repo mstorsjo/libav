@@ -22,8 +22,10 @@
 #include "avformat.h"
 #include "url.h"
 #include "libavutil/avstring.h"
+#include "libavutil/opt.h"
 #if CONFIG_GNUTLS
 #include <gnutls/gnutls.h>
+#include <gnutls/x509.h>
 #define TLS_read(c, buf, size)  gnutls_record_recv(c->session, buf, size)
 #define TLS_write(c, buf, size) gnutls_record_send(c->session, buf, size)
 #define TLS_shutdown(c)         gnutls_bye(c->session, GNUTLS_SHUT_RDWR)
@@ -65,7 +67,23 @@ typedef struct {
     SSL *ssl;
 #endif
     int fd;
+    char *ca_file;
 } TLSContext;
+
+#define OFFSET(x) offsetof(TLSContext, x)
+#define D AV_OPT_FLAG_DECODING_PARAM
+#define E AV_OPT_FLAG_ENCODING_PARAM
+static const AVOption options[] = {
+    {"ca_file", "Certificate Authority database file", OFFSET(ca_file), AV_OPT_TYPE_STRING, .flags = D|E },
+    { NULL }
+};
+
+static const AVClass tls_class = {
+    .class_name = "tls",
+    .item_name  = av_default_item_name,
+    .option     = options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
 
 static int do_tls_poll(URLContext *h, int ret)
 {
@@ -108,6 +126,11 @@ static int tls_open(URLContext *h, const char *uri, int flags)
     TLSContext *c = h->priv_data;
     int ret;
     int port;
+#if CONFIG_GNUTLS
+    unsigned int status, cert_list_size;
+    gnutls_x509_crt_t cert;
+    const gnutls_datum_t *cert_list;
+#endif
     char buf[200], host[200];
     int numerichost = 0;
     struct addrinfo hints = { 0 }, *ai = NULL;
@@ -151,7 +174,10 @@ static int tls_open(URLContext *h, const char *uri, int flags)
     if (!numerichost)
         gnutls_server_name_set(c->session, GNUTLS_NAME_DNS, host, strlen(host));
     gnutls_certificate_allocate_credentials(&c->cred);
-    gnutls_certificate_set_verify_flags(c->cred, 0);
+    if (c->ca_file)
+        gnutls_certificate_set_x509_trust_file(c->cred, c->ca_file, GNUTLS_X509_FMT_PEM);
+    else
+        gnutls_certificate_set_verify_flags(c->cred, 0);
     gnutls_credentials_set(c->session, GNUTLS_CRD_CERTIFICATE, c->cred);
     gnutls_transport_set_ptr(c->session, (gnutls_transport_ptr_t)
                                          (intptr_t) c->fd);
@@ -163,12 +189,46 @@ static int tls_open(URLContext *h, const char *uri, int flags)
         if ((ret = do_tls_poll(h, ret)) < 0)
             goto fail;
     }
+    if (c->ca_file) {
+        if ((ret = gnutls_certificate_verify_peers2(c->session, &status)) < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Unable to verify peer certificate: %s\n",
+                                       gnutls_strerror(ret));
+            ret = AVERROR(EIO);
+            goto fail;
+        }
+        if (status & GNUTLS_CERT_INVALID) {
+            av_log(NULL, AV_LOG_ERROR, "Peer certificate failed verification\n");
+            ret = AVERROR(EIO);
+            goto fail;
+        }
+        if (gnutls_certificate_type_get(c->session) != GNUTLS_CRT_X509) {
+            av_log(NULL, AV_LOG_ERROR, "Unsupported certificate type\n");
+            ret = AVERROR(EIO);
+            goto fail;
+        }
+        gnutls_x509_crt_init(&cert);
+        cert_list = gnutls_certificate_get_peers(c->session, &cert_list_size);
+        gnutls_x509_crt_import(cert, cert_list, GNUTLS_X509_FMT_DER);
+        ret = gnutls_x509_crt_check_hostname(cert, host);
+        gnutls_x509_crt_deinit(cert);
+        if (!ret) {
+            av_log(NULL, AV_LOG_ERROR, "The certificate's owner does not match "
+                                       "hostname %s\n", host);
+            ret = AVERROR(EIO);
+            goto fail;
+        }
+    }
 #elif CONFIG_OPENSSL
     c->ctx = SSL_CTX_new(TLSv1_client_method());
     if (!c->ctx) {
         av_log(h, AV_LOG_ERROR, "%s\n", ERR_error_string(ERR_get_error(), NULL));
         ret = AVERROR(EIO);
         goto fail;
+    }
+    if (c->ca_file) {
+        SSL_CTX_load_verify_locations(c->ctx, c->ca_file, NULL);
+        SSL_CTX_set_verify(c->ctx, SSL_VERIFY_PEER, NULL);
+        // TODO: Verify that the hostname matches the cert, too
     }
     c->ssl = SSL_new(c->ctx);
     if (!c->ssl) {
@@ -197,6 +257,7 @@ fail:
     TLS_free(c);
     if (c->tcp)
         ffurl_close(c->tcp);
+    av_freep(&c->ca_file);
     ff_tls_deinit();
     return ret;
 }
@@ -237,6 +298,7 @@ static int tls_close(URLContext *h)
     TLS_shutdown(c);
     TLS_free(c);
     ffurl_close(c->tcp);
+    av_freep(&c->ca_file);
     ff_tls_deinit();
     return 0;
 }
@@ -249,4 +311,5 @@ URLProtocol ff_tls_protocol = {
     .url_seek       = NULL,
     .url_close      = tls_close,
     .priv_data_size = sizeof(TLSContext),
+    .priv_data_class = &tls_class,
 };
