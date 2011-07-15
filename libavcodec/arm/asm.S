@@ -106,13 +106,13 @@ ELF     .size   \name, . - \name
 #endif
 .endm
 
-.macro  ldr_pre         rt,  rn,  rm:vararg
+.macro  ldr_pre         rt,  rn,  rm
 A       ldr             \rt, [\rn, \rm]!
 T       add             \rn, \rn, \rm
 T       ldr             \rt, [\rn]
 .endm
 
-.macro  ldr_post        rt,  rn,  rm:vararg
+.macro  ldr_post        rt,  rn,  rm
 A       ldr             \rt, [\rn], \rm
 T       ldr             \rt, [\rn]
 T       add             \rn, \rn, \rm
@@ -148,13 +148,13 @@ T       ldrh            \rt, [\rn]
 T       add             \rn, \rn, \rm
 .endm
 
-.macro  str_post       rt,  rn,  rm:vararg
+.macro  str_post       rt,  rn,  rm
 A       str             \rt, [\rn], \rm
 T       str             \rt, [\rn]
 T       add             \rn, \rn, \rm
 .endm
 
-.macro  strb_post       rt,  rn,  rm:vararg
+.macro  strb_post       rt,  rn,  rm
 A       strb            \rt, [\rn], \rm
 T       strb            \rt, [\rn]
 T       add             \rn, \rn, \rm
