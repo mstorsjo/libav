@@ -114,15 +114,21 @@ static inline float *VMUL4S(float *dst, const float *v, unsigned idx,
              "vmov     d1,  %2,  %3          \n\t"
              "lsls     %6,  %6,  #1          \n\t"
              "and      %0,  %5,  #1<<31      \n\t"
+#if CONFIG_THUMB
              "it       cs                    \n\t"
+#endif
              "lslcs    %5,  %5,  #1          \n\t"
              "lsls     %6,  %6,  #1          \n\t"
              "and      %1,  %5,  #1<<31      \n\t"
+#if CONFIG_THUMB
              "it       cs                    \n\t"
+#endif
              "lslcs    %5,  %5,  #1          \n\t"
              "lsls     %6,  %6,  #1          \n\t"
              "and      %2,  %5,  #1<<31      \n\t"
+#if CONFIG_THUMB
              "it       cs                    \n\t"
+#endif
              "lslcs    %5,  %5,  #1          \n\t"
              "vmov     d4,  %0,  %1          \n\t"
              "and      %3,  %5,  #1<<31      \n\t"
