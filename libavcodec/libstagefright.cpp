@@ -328,8 +328,9 @@ static int Stagefright_decode_frame(AVCodecContext *avctx, void *data,
             frame->size    = avpkt->size;
             // Stagefright can't handle negative timestamps -
             // if needed, work around this by offsetting them manually?
-            if (avpkt->pts >= 0)
-                frame->time    = avpkt->pts;
+//            if (avpkt->pts >= 0)
+//                frame->time    = avpkt->pts;
+            frame->time    = avctx->reordered_opaque;
             frame->key     = avpkt->flags & AV_PKT_FLAG_KEY ? 1 : 0;
             frame->buffer  = (uint8_t*)av_malloc(avpkt->size);
             if (!frame->buffer) {
@@ -431,6 +432,7 @@ static int Stagefright_decode_frame(AVCodecContext *avctx, void *data,
                   src_data, src_linesize,
                   avctx->pix_fmt, avctx->width, avctx->height);
     mbuffer->meta_data()->findInt64(kKeyTime, &s->ret_frame.pts);
+    mbuffer->meta_data()->findInt64(kKeyTime, &s->ret_frame.reordered_opaque);
 
     *data_size = sizeof(AVFrame);
     *(AVFrame*)data = s->ret_frame;
