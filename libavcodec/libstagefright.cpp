@@ -430,6 +430,7 @@ static int Stagefright_decode_frame(AVCodecContext *avctx, void *data,
     av_image_copy(s->ret_frame.data, s->ret_frame.linesize,
                   src_data, src_linesize,
                   avctx->pix_fmt, avctx->width, avctx->height);
+    mbuffer->meta_data()->findInt64(kKeyTime, &s->ret_frame.pts);
 
     *data_size = sizeof(AVFrame);
     *(AVFrame*)data = s->ret_frame;
