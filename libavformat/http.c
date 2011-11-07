@@ -51,6 +51,7 @@ typedef struct {
     char *headers;
     int willclose;          /**< Set if the server correctly handles Connection: close and will close the connection after feeding us the content. */
     int chunked_post;
+    AVDictionary *chained_options;
 } HTTPContext;
 
 #define OFFSET(x) offsetof(HTTPContext, x)
@@ -86,7 +87,7 @@ void ff_http_init_auth_state(URLContext *dest, const URLContext *src)
 }
 
 /* return non zero if error */
-static int http_open_cnx(URLContext *h)
+static int http_open_cnx(URLContext *h, AVDictionary **options)
 {
     const char *path, *proxy_path, *lower_proto = "tcp", *local_path;
     char hostname[1024], hoststr[1024], proto[10];
@@ -136,7 +137,7 @@ static int http_open_cnx(URLContext *h)
 
     ff_url_join(buf, sizeof(buf), lower_proto, NULL, hostname, port, NULL);
     err = ffurl_open(&hd, buf, AVIO_FLAG_READ_WRITE,
-                     &h->interrupt_callback, NULL);
+                     &h->interrupt_callback, options);
     if (err < 0)
         goto fail;
 
@@ -177,14 +178,17 @@ static int http_open_cnx(URLContext *h)
     return AVERROR(EIO);
 }
 
-static int http_open(URLContext *h, const char *uri, int flags)
+static int http_open(URLContext *h, const char *uri, int flags, AVDictionary **options)
 {
     HTTPContext *s = h->priv_data;
+    int ret;
 
     h->is_streamed = 1;
 
     s->filesize = -1;
     av_strlcpy(s->location, uri, sizeof(s->location));
+    if (options)
+        av_dict_copy(&s->chained_options, *options, 0);
 
     if (s->headers) {
         int len = strlen(s->headers);
@@ -192,7 +196,10 @@ static int http_open(URLContext *h, const char *uri, int flags)
             av_log(h, AV_LOG_WARNING, "No trailing CRLF found in HTTP header.\n");
     }
 
-    return http_open_cnx(h);
+    ret = http_open_cnx(h, options);
+    if (ret < 0)
+        av_dict_free(&s->chained_options);
+    return ret;
 }
 static int http_getc(HTTPContext *s)
 {
@@ -508,6 +515,7 @@ static int http_close(URLContext *h)
 
     if (s->hd)
         ffurl_close(s->hd);
+    av_dict_free(&s->chained_options);
     return ret;
 }
 
@@ -518,6 +526,7 @@ static int64_t http_seek(URLContext *h, int64_t off, int whence)
     int64_t old_off = s->off;
     uint8_t old_buf[BUFFER_SIZE];
     int old_buf_size;
+    AVDictionary *options = NULL;
 
     if (whence == AVSEEK_SIZE)
         return s->filesize;
@@ -535,7 +544,9 @@ static int64_t http_seek(URLContext *h, int64_t off, int whence)
     s->off = off;
 
     /* if it fails, continue on old connection */
-    if (http_open_cnx(h) < 0) {
+    av_dict_copy(&options, s->chained_options, 0);
+    if (http_open_cnx(h, &options) < 0) {
+        av_dict_free(&options);
         memcpy(s->buffer, old_buf, old_buf_size);
         s->buf_ptr = s->buffer;
         s->buf_end = s->buffer + old_buf_size;
@@ -543,6 +554,7 @@ static int64_t http_seek(URLContext *h, int64_t off, int whence)
         s->off = old_off;
         return -1;
     }
+    av_dict_free(&options);
     ffurl_close(old_hd);
     return off;
 }
@@ -557,7 +569,7 @@ http_get_file_handle(URLContext *h)
 #if CONFIG_HTTP_PROTOCOL
 URLProtocol ff_http_protocol = {
     .name                = "http",
-    .url_open            = http_open,
+    .url_open2           = http_open,
     .url_read            = http_read,
     .url_write           = http_write,
     .url_seek            = http_seek,
@@ -570,7 +582,7 @@ URLProtocol ff_http_protocol = {
 #if CONFIG_HTTPS_PROTOCOL
 URLProtocol ff_https_protocol = {
     .name                = "https",
-    .url_open            = http_open,
+    .url_open2           = http_open,
     .url_read            = http_read,
     .url_write           = http_write,
     .url_seek            = http_seek,
