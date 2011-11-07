@@ -48,7 +48,7 @@
 #define FF_API_READ_SEEK               (LIBAVFORMAT_VERSION_MAJOR < 54)
 #endif
 #ifndef FF_API_OLD_AVIO
-#define FF_API_OLD_AVIO                (LIBAVFORMAT_VERSION_MAJOR < 54)
+#define FF_API_OLD_AVIO                (LIBAVFORMAT_VERSION_MAJOR < 53)
 #endif
 #ifndef FF_API_DUMP_FORMAT
 #define FF_API_DUMP_FORMAT             (LIBAVFORMAT_VERSION_MAJOR < 54)
