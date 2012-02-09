@@ -484,6 +484,7 @@ static int rtp_write_trailer(AVFormatContext *s1)
     RTPMuxContext *s = s1->priv_data;
 
     av_freep(&s->buf);
+    av_freep(&s->priv_data);
 
     return 0;
 }

@@ -24,6 +24,8 @@
 #include "avformat.h"
 #include "rtp.h"
 
+struct RTPFormatSpecificContext;
+
 struct RTPMuxContext {
     const AVClass *av_class;
     AVFormatContext *ic;
@@ -60,6 +62,8 @@ struct RTPMuxContext {
     int nal_length_size;
 
     int flags;
+
+    struct RTPFormatSpecificContext *priv_data;
 };
 
 typedef struct RTPMuxContext RTPMuxContext;
