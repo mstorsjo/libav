@@ -203,7 +203,7 @@ static void vorbis_free(vorbis_context *vc)
 
     for (i = 0; i < vc->codebook_count; ++i) {
         av_free(vc->codebooks[i].codevectors);
-        ff_free_vlc(&vc->codebooks[i].vlc);
+        avpriv_free_vlc(&vc->codebooks[i].vlc);
     }
     av_freep(&vc->codebooks);
 

@@ -813,7 +813,7 @@ static av_cold int decode_close(AVCodecContext *avctx)
     ff_ivi_free_buffers(&ctx->planes[0]);
 
     if (ctx->mb_vlc.cust_tab.table)
-        ff_free_vlc(&ctx->mb_vlc.cust_tab);
+        avpriv_free_vlc(&ctx->mb_vlc.cust_tab);
 
     if (ctx->frame.data[0])
         avctx->release_buffer(avctx, &ctx->frame);

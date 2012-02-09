@@ -240,7 +240,7 @@ void ff_h261_encode_init(MpegEncContext *s){
 
     if (!done) {
         done = 1;
-        ff_init_rl(&h261_rl_tcoeff, ff_h261_rl_table_store);
+        avpriv_init_rl(&h261_rl_tcoeff, ff_h261_rl_table_store);
     }
 
     s->min_qcoeff= -127;

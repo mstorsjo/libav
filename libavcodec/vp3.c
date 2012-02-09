@@ -292,17 +292,17 @@ static av_cold int vp3_decode_end(AVCodecContext *avctx)
         return 0;
 
     for (i = 0; i < 16; i++) {
-        ff_free_vlc(&s->dc_vlc[i]);
-        ff_free_vlc(&s->ac_vlc_1[i]);
-        ff_free_vlc(&s->ac_vlc_2[i]);
-        ff_free_vlc(&s->ac_vlc_3[i]);
-        ff_free_vlc(&s->ac_vlc_4[i]);
+        avpriv_free_vlc(&s->dc_vlc[i]);
+        avpriv_free_vlc(&s->ac_vlc_1[i]);
+        avpriv_free_vlc(&s->ac_vlc_2[i]);
+        avpriv_free_vlc(&s->ac_vlc_3[i]);
+        avpriv_free_vlc(&s->ac_vlc_4[i]);
     }
 
-    ff_free_vlc(&s->superblock_run_length_vlc);
-    ff_free_vlc(&s->fragment_run_length_vlc);
-    ff_free_vlc(&s->mode_code_vlc);
-    ff_free_vlc(&s->motion_vector_vlc);
+    avpriv_free_vlc(&s->superblock_run_length_vlc);
+    avpriv_free_vlc(&s->fragment_run_length_vlc);
+    avpriv_free_vlc(&s->mode_code_vlc);
+    avpriv_free_vlc(&s->motion_vector_vlc);
 
     /* release all frames */
     vp3_decode_flush(avctx);
