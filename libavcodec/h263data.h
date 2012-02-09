@@ -33,12 +33,12 @@
 #include "mpegvideo.h"
 
 /* intra MCBPC, mb_type = (intra), then (intraq) */
-const uint8_t ff_h263_intra_MCBPC_code[9] = { 1, 1, 2, 3, 1, 1, 2, 3, 1 };
-const uint8_t ff_h263_intra_MCBPC_bits[9] = { 1, 3, 3, 3, 4, 6, 6, 6, 9 };
+const uint8_t avpriv_h263_intra_MCBPC_code[9] = { 1, 1, 2, 3, 1, 1, 2, 3, 1 };
+const uint8_t avpriv_h263_intra_MCBPC_bits[9] = { 1, 3, 3, 3, 4, 6, 6, 6, 9 };
 
 /* inter MCBPC, mb_type = (inter), (intra), (interq), (intraq), (inter4v) */
 /* Changed the tables for interq and inter4v+q, following the standard ** Juanjo ** */
-const uint8_t ff_h263_inter_MCBPC_code[28] = {
+const uint8_t avpriv_h263_inter_MCBPC_code[28] = {
     1, 3, 2, 5,
     3, 4, 3, 3,
     3, 7, 6, 5,
@@ -47,7 +47,7 @@ const uint8_t ff_h263_inter_MCBPC_code[28] = {
     1, 0, 0, 0, /* Stuffing */
     2, 12, 14, 15,
 };
-const uint8_t ff_h263_inter_MCBPC_bits[28] = {
+const uint8_t avpriv_h263_inter_MCBPC_bits[28] = {
     1, 4, 4, 6, /* inter  */
     5, 8, 8, 7, /* intra  */
     3, 7, 7, 9, /* interQ */
@@ -82,13 +82,13 @@ const uint8_t ff_cbpc_b_tab[4][2] = {
 {6, 3},
 };
 
-const uint8_t ff_h263_cbpy_tab[16][2] =
+const uint8_t avpriv_h263_cbpy_tab[16][2] =
 {
   {3,4}, {5,5}, {4,5}, {9,4}, {3,5}, {7,4}, {2,6}, {11,4},
   {2,5}, {3,6}, {5,4}, {10,4}, {4,4}, {8,4}, {6,4}, {3,2}
 };
 
-const uint8_t ff_mvtab[33][2] =
+const uint8_t avpriv_mvtab[33][2] =
 {
   {1,1}, {1,2}, {1,3}, {1,4}, {3,6}, {5,7}, {4,7}, {3,7},
   {11,9}, {10,9}, {9,9}, {17,10}, {16,10}, {15,10}, {14,10}, {13,10},
@@ -98,7 +98,7 @@ const uint8_t ff_mvtab[33][2] =
 };
 
 /* third non intra table */
-const uint16_t ff_inter_vlc[103][2] = {
+const uint16_t avpriv_inter_vlc[103][2] = {
 { 0x2, 2 },{ 0xf, 4 },{ 0x15, 6 },{ 0x17, 7 },
 { 0x1f, 8 },{ 0x25, 9 },{ 0x24, 9 },{ 0x21, 10 },
 { 0x20, 10 },{ 0x7, 11 },{ 0x6, 11 },{ 0x20, 11 },
@@ -127,7 +127,7 @@ const uint16_t ff_inter_vlc[103][2] = {
 { 0x5e, 12 },{ 0x5f, 12 },{ 0x3, 7 },
 };
 
-const int8_t ff_inter_level[102] = {
+const int8_t avpriv_inter_level[102] = {
   1,  2,  3,  4,  5,  6,  7,  8,
   9, 10, 11, 12,  1,  2,  3,  4,
   5,  6,  1,  2,  3,  4,  1,  2,
@@ -143,7 +143,7 @@ const int8_t ff_inter_level[102] = {
   1,  1,  1,  1,  1,  1,
 };
 
-const int8_t ff_inter_run[102] = {
+const int8_t avpriv_inter_run[102] = {
   0,  0,  0,  0,  0,  0,  0,  0,
   0,  0,  0,  0,  1,  1,  1,  1,
   1,  1,  2,  2,  2,  2,  3,  3,
@@ -162,9 +162,9 @@ const int8_t ff_inter_run[102] = {
 RLTable ff_h263_rl_inter = {
     102,
     58,
-    ff_inter_vlc,
-    ff_inter_run,
-    ff_inter_level,
+    avpriv_inter_vlc,
+    avpriv_inter_run,
+    avpriv_inter_level,
 };
 
 static const uint16_t intra_vlc_aic[103][2] = {

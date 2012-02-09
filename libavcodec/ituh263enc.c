@@ -488,10 +488,10 @@ void ff_h263_encode_mb(MpegEncContext * s,
         if(s->dquant) cbpc+= 8;
         if(s->mv_type==MV_TYPE_16X16){
             put_bits(&s->pb,
-                    ff_h263_inter_MCBPC_bits[cbpc],
-                    ff_h263_inter_MCBPC_code[cbpc]);
+                    avpriv_h263_inter_MCBPC_bits[cbpc],
+                    avpriv_h263_inter_MCBPC_code[cbpc]);
 
-            put_bits(&s->pb, ff_h263_cbpy_tab[cbpy][1], ff_h263_cbpy_tab[cbpy][0]);
+            put_bits(&s->pb, avpriv_h263_cbpy_tab[cbpy][1], avpriv_h263_cbpy_tab[cbpy][0]);
             if(s->dquant)
                 put_bits(&s->pb, 2, dquant_code[s->dquant+2]);
 
@@ -515,9 +515,9 @@ void ff_h263_encode_mb(MpegEncContext * s,
             }
         }else{
             put_bits(&s->pb,
-                    ff_h263_inter_MCBPC_bits[cbpc+16],
-                    ff_h263_inter_MCBPC_code[cbpc+16]);
-            put_bits(&s->pb, ff_h263_cbpy_tab[cbpy][1], ff_h263_cbpy_tab[cbpy][0]);
+                    avpriv_h263_inter_MCBPC_bits[cbpc+16],
+                    avpriv_h263_inter_MCBPC_code[cbpc+16]);
+            put_bits(&s->pb, avpriv_h263_cbpy_tab[cbpy][1], avpriv_h263_cbpy_tab[cbpy][0]);
             if(s->dquant)
                 put_bits(&s->pb, 2, dquant_code[s->dquant+2]);
 
@@ -610,21 +610,21 @@ void ff_h263_encode_mb(MpegEncContext * s,
         if (s->pict_type == AV_PICTURE_TYPE_I) {
             if(s->dquant) cbpc+=4;
             put_bits(&s->pb,
-                ff_h263_intra_MCBPC_bits[cbpc],
-                ff_h263_intra_MCBPC_code[cbpc]);
+                avpriv_h263_intra_MCBPC_bits[cbpc],
+                avpriv_h263_intra_MCBPC_code[cbpc]);
         } else {
             if(s->dquant) cbpc+=8;
             put_bits(&s->pb, 1, 0);     /* mb coded */
             put_bits(&s->pb,
-                ff_h263_inter_MCBPC_bits[cbpc + 4],
-                ff_h263_inter_MCBPC_code[cbpc + 4]);
+                avpriv_h263_inter_MCBPC_bits[cbpc + 4],
+                avpriv_h263_inter_MCBPC_code[cbpc + 4]);
         }
         if (s->h263_aic) {
             /* XXX: currently, we do not try to use ac prediction */
             put_bits(&s->pb, 1, 0);     /* no AC prediction */
         }
         cbpy = cbp >> 2;
-        put_bits(&s->pb, ff_h263_cbpy_tab[cbpy][1], ff_h263_cbpy_tab[cbpy][0]);
+        put_bits(&s->pb, avpriv_h263_cbpy_tab[cbpy][1], avpriv_h263_cbpy_tab[cbpy][0]);
         if(s->dquant)
             put_bits(&s->pb, 2, dquant_code[s->dquant+2]);
 
@@ -662,7 +662,7 @@ void ff_h263_encode_motion(MpegEncContext * s, int val, int f_code)
     if (val == 0) {
         /* zero vector */
         code = 0;
-        put_bits(&s->pb, ff_mvtab[code][1], ff_mvtab[code][0]);
+        put_bits(&s->pb, avpriv_mvtab[code][1], avpriv_mvtab[code][0]);
     } else {
         bit_size = f_code - 1;
         range = 1 << bit_size;
@@ -676,7 +676,7 @@ void ff_h263_encode_motion(MpegEncContext * s, int val, int f_code)
         code = (val >> bit_size) + 1;
         bits = val & (range - 1);
 
-        put_bits(&s->pb, ff_mvtab[code][1] + 1, (ff_mvtab[code][0] << 1) | sign);
+        put_bits(&s->pb, avpriv_mvtab[code][1] + 1, (avpriv_mvtab[code][0] << 1) | sign);
         if (bit_size > 0) {
             put_bits(&s->pb, bit_size, bits);
         }
@@ -692,7 +692,7 @@ static void init_mv_penalty_and_fcode(MpegEncContext *s)
         for(mv=-MAX_MV; mv<=MAX_MV; mv++){
             int len;
 
-            if(mv==0) len= ff_mvtab[0][1];
+            if(mv==0) len= avpriv_mvtab[0][1];
             else{
                 int val, bit_size, code;
 
@@ -704,9 +704,9 @@ static void init_mv_penalty_and_fcode(MpegEncContext *s)
                 val--;
                 code = (val >> bit_size) + 1;
                 if(code<33){
-                    len= ff_mvtab[code][1] + 1 + bit_size;
+                    len= avpriv_mvtab[code][1] + 1 + bit_size;
                 }else{
-                    len= ff_mvtab[32][1] + av_log2(code>>5) + 2 + bit_size;
+                    len= avpriv_mvtab[32][1] + av_log2(code>>5) + 2 + bit_size;
                 }
             }
 

@@ -505,7 +505,7 @@ static void msmpeg4v2_encode_motion(MpegEncContext * s, int val)
     if (val == 0) {
         /* zero vector */
         code = 0;
-        put_bits(&s->pb, ff_mvtab[code][1], ff_mvtab[code][0]);
+        put_bits(&s->pb, avpriv_mvtab[code][1], avpriv_mvtab[code][0]);
     } else {
         bit_size = s->f_code - 1;
         range = 1 << bit_size;
@@ -524,7 +524,7 @@ static void msmpeg4v2_encode_motion(MpegEncContext * s, int val)
         code = (val >> bit_size) + 1;
         bits = val & (range - 1);
 
-        put_bits(&s->pb, ff_mvtab[code][1] + 1, (ff_mvtab[code][0] << 1) | sign);
+        put_bits(&s->pb, avpriv_mvtab[code][1] + 1, (avpriv_mvtab[code][0] << 1) | sign);
         if (bit_size > 0) {
             put_bits(&s->pb, bit_size, bits);
         }
@@ -568,8 +568,8 @@ void ff_msmpeg4_encode_mb(MpegEncContext * s,
             else             coded_cbp= cbp;
 
             put_bits(&s->pb,
-                     ff_h263_cbpy_tab[coded_cbp>>2][1],
-                     ff_h263_cbpy_tab[coded_cbp>>2][0]);
+                     avpriv_h263_cbpy_tab[coded_cbp>>2][1],
+                     avpriv_h263_cbpy_tab[coded_cbp>>2][0]);
 
             s->misc_bits += get_bits_diff(s);
 
@@ -625,8 +625,8 @@ void ff_msmpeg4_encode_mb(MpegEncContext * s,
             }
             put_bits(&s->pb, 1, 0);             /* no AC prediction yet */
             put_bits(&s->pb,
-                     ff_h263_cbpy_tab[cbp>>2][1],
-                     ff_h263_cbpy_tab[cbp>>2][0]);
+                     avpriv_h263_cbpy_tab[cbp>>2][1],
+                     avpriv_h263_cbpy_tab[cbp>>2][0]);
         }else{
             if (s->pict_type == AV_PICTURE_TYPE_I) {
                 put_bits(&s->pb,
@@ -1314,8 +1314,8 @@ av_cold int ff_msmpeg4_decode_init(AVCodecContext *avctx)
                  &ff_v2_mb_type[0][1], 2, 1,
                  &ff_v2_mb_type[0][0], 2, 1, 128);
         INIT_VLC_STATIC(&v2_mv_vlc, V2_MV_VLC_BITS, 33,
-                 &ff_mvtab[0][1], 2, 1,
-                 &ff_mvtab[0][0], 2, 1, 538);
+                 &avpriv_mvtab[0][1], 2, 1,
+                 &avpriv_mvtab[0][0], 2, 1, 538);
 
         INIT_VLC_STATIC(&ff_mb_non_intra_vlc[0], MB_NON_INTRA_VLC_BITS, 128,
                      &ff_wmv2_inter_table[0][0][1], 8, 4,

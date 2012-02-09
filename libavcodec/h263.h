@@ -36,17 +36,17 @@
 #define TEX_VLC_BITS 9
 
 extern const AVRational ff_h263_pixel_aspect[16];
-extern const uint8_t ff_h263_cbpy_tab[16][2];
+extern const uint8_t avpriv_h263_cbpy_tab[16][2];
 
 extern const uint8_t ff_cbpc_b_tab[4][2];
 
-extern const uint8_t ff_mvtab[33][2];
+extern const uint8_t avpriv_mvtab[33][2];
 
-extern const uint8_t ff_h263_intra_MCBPC_code[9];
-extern const uint8_t ff_h263_intra_MCBPC_bits[9];
+extern const uint8_t avpriv_h263_intra_MCBPC_code[9];
+extern const uint8_t avpriv_h263_intra_MCBPC_bits[9];
 
-extern const uint8_t ff_h263_inter_MCBPC_code[28];
-extern const uint8_t ff_h263_inter_MCBPC_bits[28];
+extern const uint8_t avpriv_h263_inter_MCBPC_code[28];
+extern const uint8_t avpriv_h263_inter_MCBPC_bits[28];
 extern const uint8_t ff_h263_mbtype_b_tab[15][2];
 
 extern VLC ff_h263_intra_MCBPC_vlc;
@@ -119,7 +119,7 @@ static inline int h263_get_motion_length(MpegEncContext * s, int val, int f_code
     int l, bit_size, code;
 
     if (val == 0) {
-        return ff_mvtab[0][1];
+        return avpriv_mvtab[0][1];
     } else {
         bit_size = f_code - 1;
         /* modulo encoding */
@@ -128,7 +128,7 @@ static inline int h263_get_motion_length(MpegEncContext * s, int val, int f_code
         val--;
         code = (val >> bit_size) + 1;
 
-        return ff_mvtab[code][1] + 1 + bit_size;
+        return avpriv_mvtab[code][1] + 1 + bit_size;
     }
 }
 
@@ -156,7 +156,7 @@ static inline int get_p_cbp(MpegEncContext * s,
         const int lambda= s->lambda2 >> (FF_LAMBDA_SHIFT - 6);
 
         for(i=0; i<4; i++){
-            int score= ff_h263_inter_MCBPC_bits[i + offset] * lambda;
+            int score= avpriv_h263_inter_MCBPC_bits[i + offset] * lambda;
             if(i&1) score += s->coded_score[5];
             if(i&2) score += s->coded_score[4];
 
@@ -167,7 +167,7 @@ static inline int get_p_cbp(MpegEncContext * s,
         }
 
         for(i=0; i<16; i++){
-            int score= ff_h263_cbpy_tab[i ^ 0xF][1] * lambda;
+            int score= avpriv_h263_cbpy_tab[i ^ 0xF][1] * lambda;
             if(i&1) score += s->coded_score[3];
             if(i&2) score += s->coded_score[2];
             if(i&4) score += s->coded_score[1];

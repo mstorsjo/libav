@@ -109,17 +109,17 @@ void ff_h263_decode_init_vlc(MpegEncContext *s)
         done = 1;
 
         INIT_VLC_STATIC(&ff_h263_intra_MCBPC_vlc, INTRA_MCBPC_VLC_BITS, 9,
-                 ff_h263_intra_MCBPC_bits, 1, 1,
-                 ff_h263_intra_MCBPC_code, 1, 1, 72);
+                 avpriv_h263_intra_MCBPC_bits, 1, 1,
+                 avpriv_h263_intra_MCBPC_code, 1, 1, 72);
         INIT_VLC_STATIC(&ff_h263_inter_MCBPC_vlc, INTER_MCBPC_VLC_BITS, 28,
-                 ff_h263_inter_MCBPC_bits, 1, 1,
-                 ff_h263_inter_MCBPC_code, 1, 1, 198);
+                 avpriv_h263_inter_MCBPC_bits, 1, 1,
+                 avpriv_h263_inter_MCBPC_code, 1, 1, 198);
         INIT_VLC_STATIC(&ff_h263_cbpy_vlc, CBPY_VLC_BITS, 16,
-                 &ff_h263_cbpy_tab[0][1], 2, 1,
-                 &ff_h263_cbpy_tab[0][0], 2, 1, 64);
+                 &avpriv_h263_cbpy_tab[0][1], 2, 1,
+                 &avpriv_h263_cbpy_tab[0][0], 2, 1, 64);
         INIT_VLC_STATIC(&mv_vlc, MV_VLC_BITS, 33,
-                 &ff_mvtab[0][1], 2, 1,
-                 &ff_mvtab[0][0], 2, 1, 538);
+                 &avpriv_mvtab[0][1], 2, 1,
+                 &avpriv_mvtab[0][0], 2, 1, 538);
         avpriv_init_rl(&ff_h263_rl_inter, ff_h263_static_rl_table_store[0]);
         avpriv_init_rl(&ff_rl_intra_aic, ff_h263_static_rl_table_store[1]);
         INIT_VLC_RL(ff_h263_rl_inter, 554);
