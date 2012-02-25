@@ -125,8 +125,14 @@ static int seg_write_header(AVFormatContext *s)
     oc->interrupt_callback = s->interrupt_callback;
     seg->avf = oc;
 
-    oc->streams = s->streams;
-    oc->nb_streams = s->nb_streams;
+    for (i = 0; i < s->nb_streams; i++) {
+        AVStream *st;
+        if (!(st = avformat_new_stream(oc, NULL))) {
+            ret = AVERROR(ENOMEM);
+            goto fail;
+        }
+        avcodec_copy_context(st->codec, s->streams[i]->codec);
+    }
 
     if (av_get_frame_filename(oc->filename, sizeof(oc->filename),
                               s->filename, seg->number++) < 0) {
@@ -150,8 +156,6 @@ static int seg_write_header(AVFormatContext *s)
 
 fail:
     if (ret) {
-        oc->streams = NULL;
-        oc->nb_streams = 0;
         if (seg->list)
             avio_close(seg->pb);
         avformat_free_context(oc);
@@ -163,7 +167,7 @@ static int seg_write_packet(AVFormatContext *s, AVPacket *pkt)
 {
     SegmentContext *seg = s->priv_data;
     AVFormatContext *oc = seg->avf;
-    AVStream *st = oc->streams[pkt->stream_index];
+    AVStream *st = s->streams[pkt->stream_index];
     int64_t end_pts = seg->recording_time * seg->number;
     int ret;
 
@@ -195,12 +199,10 @@ static int seg_write_packet(AVFormatContext *s, AVPacket *pkt)
         }
     }
 
-    ret = oc->oformat->write_packet(oc, pkt);
+    ret = ff_write_chained(oc, pkt->stream_index, pkt, s);
 
 fail:
     if (ret < 0) {
-        oc->streams = NULL;
-        oc->nb_streams = 0;
         if (seg->list)
             avio_close(seg->pb);
         avformat_free_context(oc);
@@ -218,8 +220,6 @@ static int seg_write_trailer(struct AVFormatContext *s)
     ret = segment_end(oc);
     if (seg->list)
         avio_close(seg->pb);
-    oc->streams = NULL;
-    oc->nb_streams = 0;
     avformat_free_context(oc);
     return ret;
 }
