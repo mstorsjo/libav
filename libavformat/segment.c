@@ -63,42 +63,17 @@ static int segment_start(AVFormatContext *s)
                           &s->interrupt_callback, NULL)) < 0)
         return err;
 
-    if (!oc->priv_data && oc->oformat->priv_data_size > 0) {
-        oc->priv_data = av_mallocz(oc->oformat->priv_data_size);
-        if (!oc->priv_data) {
-            avio_close(oc->pb);
-            return AVERROR(ENOMEM);
-        }
-        if (oc->oformat->priv_class) {
-            *(const AVClass**)oc->priv_data = oc->oformat->priv_class;
-            av_opt_set_defaults(oc->priv_data);
-        }
-    }
-
-    if ((err = oc->oformat->write_header(oc)) < 0) {
-        goto fail;
-    }
+    if (oc->oformat->priv_class)
+        av_opt_set(oc->priv_data, "resend_headers", "1", 0);
 
     return 0;
-
-fail:
-    avio_close(oc->pb);
-    av_freep(&oc->priv_data);
-
-    return err;
 }
 
 static int segment_end(AVFormatContext *oc)
 {
     int ret = 0;
 
-    if (oc->oformat->write_trailer)
-        ret = oc->oformat->write_trailer(oc);
-
     avio_close(oc->pb);
-    if (oc->oformat->priv_class)
-        av_opt_free(oc->priv_data);
-    av_freep(&oc->priv_data);
 
     return ret;
 }
@@ -237,7 +212,9 @@ static int seg_write_trailer(struct AVFormatContext *s)
 {
     SegmentContext *seg = s->priv_data;
     AVFormatContext *oc = seg->avf;
-    int ret = segment_end(oc);
+    int ret;
+    av_write_trailer(oc);
+    ret = segment_end(oc);
     if (seg->list)
         avio_close(seg->pb);
     oc->streams = NULL;
