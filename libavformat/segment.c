@@ -37,6 +37,7 @@ typedef struct {
     AVFormatContext *avf;
     char *format;          /**< Set by a private option. */
     char *list;            /**< Set by a private option. */
+    int   hls_list;        /**< Set by a private option. */
     float time;            /**< Set by a private option. */
     int  size;             /**< Set by a private option. */
     int  wrap;             /**< Set by a private option. */
@@ -110,10 +111,17 @@ static int seg_write_header(AVFormatContext *s)
     seg->offset_time = 0;
     seg->recording_time = seg->time * 1000000;
 
-    if (seg->list)
+    if (seg->list) {
         if ((ret = avio_open2(&seg->pb, seg->list, AVIO_FLAG_WRITE,
                               &s->interrupt_callback, NULL)) < 0)
             return ret;
+        if (seg->hls_list) {
+            avio_printf(seg->pb, "#EXTM3U\n");
+            avio_printf(seg->pb, "#EXT-X-TARGETDURATION:%d\n", (int)(seg->time + 0.5));
+            avio_printf(seg->pb, "#EXT-X-MEDIA-SEQUENCE:0\n");
+            avio_flush(seg->pb);
+        }
+    }
 
     for (i = 0; i< s->nb_streams; i++)
         seg->has_video +=
@@ -185,6 +193,12 @@ static int seg_write_header(AVFormatContext *s)
     }
 
     if (seg->list) {
+        /* HLS TODO:
+         * - Add the entries to the playlist only once they're finished
+         * - Write the actual segment length, not the target length
+         */
+        if (seg->hls_list)
+            avio_printf(seg->pb, "#EXTINF:%d, no desc\n", (int)(seg->time + 0.5));
         avio_printf(seg->pb, "%s\n", oc->filename);
         avio_flush(seg->pb);
     }
@@ -223,6 +237,8 @@ static int seg_write_packet(AVFormatContext *s, AVPacket *pkt)
             goto fail;
 
         if (seg->list) {
+            if (seg->hls_list)
+                avio_printf(seg->pb, "#EXTINF:%d, no desc\n", (int)(seg->time + 0.5));
             avio_printf(seg->pb, "%s\n", oc->filename);
             avio_flush(seg->pb);
             if (seg->size && !(seg->number % seg->size)) {
@@ -260,8 +276,12 @@ static int seg_write_trailer(struct AVFormatContext *s)
         av_write_trailer(oc);
         ret = segment_end(oc);
     }
-    if (seg->list)
+    if (seg->list) {
+        if (seg->hls_list)
+            avio_printf(seg->pb, "#EXT-X-ENDLIST\n");
+        avio_flush(seg->pb);
         avio_close(seg->pb);
+    }
     avformat_free_context(oc);
     return ret;
 }
@@ -272,6 +292,7 @@ static const AVOption options[] = {
     { "segment_format",    "container format used for the segments",  OFFSET(format),  AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,       E },
     { "segment_time",      "segment length in seconds",               OFFSET(time),    AV_OPT_TYPE_FLOAT,  {.dbl = 2},     0, FLT_MAX, E },
     { "segment_list",      "output the segment list",                 OFFSET(list),    AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,       E },
+    { "segment_hls_list",  "output a HLS segment playlist",           OFFSET(hls_list),AV_OPT_TYPE_INT,    {.dbl = 0},     0, 1,       E },
     { "segment_list_size", "maximum number of playlist entries",      OFFSET(size),    AV_OPT_TYPE_INT,    {.dbl = 5},     0, INT_MAX, E },
     { "segment_wrap",      "number after which the index wraps",      OFFSET(wrap),    AV_OPT_TYPE_INT,    {.dbl = 0},     0, INT_MAX, E },
     { "skip_header_trailer", "don't write header/trailer to the segments", OFFSET(skip_header_trailer), AV_OPT_TYPE_INT, {.dbl = 0}, 0, 1, E },
