@@ -40,6 +40,7 @@ typedef struct {
     float time;            /**< Set by a private option. */
     int  size;             /**< Set by a private option. */
     int  wrap;             /**< Set by a private option. */
+    int  skip_header_trailer; /**< Set by a private option. */
     int64_t offset_time;
     int64_t recording_time;
     int has_video;
@@ -73,9 +74,30 @@ static int segment_end(AVFormatContext *oc)
 {
     int ret = 0;
 
+    av_write_frame(oc, NULL); /* Flush any buffered data */
     avio_close(oc->pb);
 
     return ret;
+}
+
+static int open_null_ctx(AVIOContext **ctx)
+{
+    int buf_size = 32768;
+    uint8_t *buf = av_malloc(buf_size);
+    if (!buf)
+        return AVERROR(ENOMEM);
+    *ctx = avio_alloc_context(buf, buf_size, AVIO_FLAG_WRITE, NULL, NULL, NULL, NULL);
+    if (!*ctx) {
+        av_free(buf);
+        return AVERROR(ENOMEM);
+    }
+    return 0;
+}
+
+static void close_null_ctx(AVIOContext *pb)
+{
+    av_free(pb->buffer);
+    av_free(pb);
 }
 
 static int seg_write_header(AVFormatContext *s)
@@ -132,6 +154,7 @@ static int seg_write_header(AVFormatContext *s)
             goto fail;
         }
         avcodec_copy_context(st->codec, s->streams[i]->codec);
+        st->codec->codec_tag = 0; /* HACK, this fixes writing to ismv */
     }
 
     if (av_get_frame_filename(oc->filename, sizeof(oc->filename),
@@ -140,13 +163,25 @@ static int seg_write_header(AVFormatContext *s)
         goto fail;
     }
 
+    if (!seg->skip_header_trailer) {
     if ((ret = avio_open2(&oc->pb, oc->filename, AVIO_FLAG_WRITE,
                           &s->interrupt_callback, NULL)) < 0)
         goto fail;
+    } else {
+        if ((ret = open_null_ctx(&oc->pb)) < 0)
+            goto fail;
+    }
 
     if ((ret = avformat_write_header(oc, NULL)) < 0) {
         avio_close(oc->pb);
         goto fail;
+    }
+
+    if (seg->skip_header_trailer) {
+        close_null_ctx(oc->pb);
+        if ((ret = avio_open2(&oc->pb, oc->filename, AVIO_FLAG_WRITE,
+                              &s->interrupt_callback, NULL)) < 0)
+            goto fail;
     }
 
     if (seg->list) {
@@ -216,8 +251,15 @@ static int seg_write_trailer(struct AVFormatContext *s)
     SegmentContext *seg = s->priv_data;
     AVFormatContext *oc = seg->avf;
     int ret;
-    av_write_trailer(oc);
-    ret = segment_end(oc);
+    if (seg->skip_header_trailer) {
+        ret = segment_end(oc);
+        open_null_ctx(&oc->pb);
+        av_write_trailer(oc);
+        close_null_ctx(oc->pb);
+    } else {
+        av_write_trailer(oc);
+        ret = segment_end(oc);
+    }
     if (seg->list)
         avio_close(seg->pb);
     avformat_free_context(oc);
@@ -232,6 +274,7 @@ static const AVOption options[] = {
     { "segment_list",      "output the segment list",                 OFFSET(list),    AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,       E },
     { "segment_list_size", "maximum number of playlist entries",      OFFSET(size),    AV_OPT_TYPE_INT,    {.dbl = 5},     0, INT_MAX, E },
     { "segment_wrap",      "number after which the index wraps",      OFFSET(wrap),    AV_OPT_TYPE_INT,    {.dbl = 0},     0, INT_MAX, E },
+    { "skip_header_trailer", "don't write header/trailer to the segments", OFFSET(skip_header_trailer), AV_OPT_TYPE_INT, {.dbl = 0}, 0, 1, E },
     { NULL },
 };
 
