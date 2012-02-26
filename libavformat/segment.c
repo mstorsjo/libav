@@ -42,13 +42,14 @@ typedef struct {
     int  size;             /**< Set by a private option. */
     int  wrap;             /**< Set by a private option. */
     int  skip_header_trailer; /**< Set by a private option. */
+    int  individual_header_trailer; /**< Set by a private option. */
     int64_t offset_time;
     int64_t recording_time;
     int has_video;
     AVIOContext *pb;
 } SegmentContext;
 
-static int segment_start(AVFormatContext *s)
+static int segment_start(AVFormatContext *s, int write_header)
 {
     SegmentContext *c = s->priv_data;
     AVFormatContext *oc = c->avf;
@@ -68,14 +69,22 @@ static int segment_start(AVFormatContext *s)
     if (oc->oformat->priv_class)
         av_opt_set(oc->priv_data, "resend_headers", "1", 0);
 
+    if (write_header) {
+        if ((err = avformat_write_header(oc, NULL)) < 0) {
+            return err;
+        }
+    }
+
     return 0;
 }
 
-static int segment_end(AVFormatContext *oc)
+static int segment_end(AVFormatContext *oc, int write_trailer)
 {
     int ret = 0;
 
     av_write_frame(oc, NULL); /* Flush any buffered data */
+    if (write_trailer)
+        av_write_trailer(oc);
     avio_close(oc->pb);
 
     return ret;
@@ -228,10 +237,10 @@ static int seg_write_packet(AVFormatContext *s, AVPacket *pkt)
         av_log(s, AV_LOG_DEBUG, "Next segment starts at %d %"PRId64"\n",
                pkt->stream_index, pkt->pts);
 
-        ret = segment_end(oc);
+        ret = segment_end(oc, seg->individual_header_trailer);
 
         if (!ret)
-            ret = segment_start(s);
+            ret = segment_start(s, seg->individual_header_trailer);
 
         if (ret)
             goto fail;
@@ -268,13 +277,12 @@ static int seg_write_trailer(struct AVFormatContext *s)
     AVFormatContext *oc = seg->avf;
     int ret;
     if (seg->skip_header_trailer) {
-        ret = segment_end(oc);
+        ret = segment_end(oc, 0);
         open_null_ctx(&oc->pb);
         av_write_trailer(oc);
         close_null_ctx(oc->pb);
     } else {
-        av_write_trailer(oc);
-        ret = segment_end(oc);
+        ret = segment_end(oc, 1);
     }
     if (seg->list) {
         if (seg->hls_list)
@@ -296,6 +304,7 @@ static const AVOption options[] = {
     { "segment_list_size", "maximum number of playlist entries",      OFFSET(size),    AV_OPT_TYPE_INT,    {.dbl = 5},     0, INT_MAX, E },
     { "segment_wrap",      "number after which the index wraps",      OFFSET(wrap),    AV_OPT_TYPE_INT,    {.dbl = 0},     0, INT_MAX, E },
     { "skip_header_trailer", "don't write header/trailer to the segments", OFFSET(skip_header_trailer), AV_OPT_TYPE_INT, {.dbl = 0}, 0, 1, E },
+    { "individual_header_trailer", "write header/trailer to each segment", OFFSET(individual_header_trailer), AV_OPT_TYPE_INT, {.dbl = 0}, 0, 1, E },
     { NULL },
 };
 
