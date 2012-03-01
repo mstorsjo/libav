@@ -445,6 +445,10 @@ void ff_rtp_send_h263_rfc2190(AVFormatContext *s1, const uint8_t *buf, int size,
                 find_mb_boundary(s->priv_data, buf, sbits, &info, &state,
                                  &len, &ebits, first);
             } else if (len == s->max_payload_size - 8) {
+                struct H263State parsed_state = state;
+                int parsed_len, parsed_ebits;
+                find_mb_boundary(s->priv_data, buf, sbits, &info, &parsed_state,
+                                 &parsed_len, &parsed_ebits, first);
                 /* Skip mb info prior to the start of the current ptr */
                 while (mb_info_pos < mb_info_count) {
                     uint32_t pos = AV_RL32(&mb_info[12*mb_info_pos])/8;
@@ -474,6 +478,17 @@ void ff_rtp_send_h263_rfc2190(AVFormatContext *s1, const uint8_t *buf, int size,
                         ebits = 8 * pos - bit_pos;
                         len   = pos - (buf - buf_base);
                         mb_info_pos++;
+
+                        if (len != parsed_len || ebits != parsed_ebits ||
+                            state.quant != parsed_state.quant ||
+                            state.gobn  != parsed_state.gobn  ||
+                            state.mba   != parsed_state.mba   ||
+                            state.hmv1  != parsed_state.hmv1  ||
+                            state.vmv1  != parsed_state.vmv1) {
+                            av_log(s1, AV_LOG_ERROR, "info gave mb at %d (%d) %d, quant %d gobn %d mba %d mv %d %d\n", len, (int)(len + (buf - buf_base)), ebits, state.quant, state.gobn, state.mba, state.hmv1, state.vmv1);
+                            av_log(s1, AV_LOG_ERROR, "parser found mb at %d (%d) %d, quant %d gobn %d mba %d mv %d %d\n", parsed_len, (int)(parsed_len + (buf - buf_base)), parsed_ebits, parsed_state.quant, parsed_state.gobn, parsed_state.mba, parsed_state.hmv1, parsed_state.vmv1);
+                        }
+
                     } else {
                         av_log(s1, AV_LOG_ERROR,
                                "Unable to split H263 packet, use -mb_info %d "
