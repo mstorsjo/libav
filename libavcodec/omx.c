@@ -74,6 +74,9 @@ static int64_t from_omx_ticks(OMX_TICKS value)
         }                                                                 \
     } while (0)
 
+#define OMX_QCOM_COLOR_FormatYVU420SemiPlanar 0x7FA30C00
+#define OMX_TI_COLOR_FormatYUV420PackedSemiPlanar 0x7F000100
+
 typedef struct OMXContext {
     int users;
     void *lib;
@@ -415,8 +418,12 @@ static av_cold int find_component(void *logctx, const char *role, char *str,
     omx_context->ptr_GetComponentsOfRole((OMX_STRING) role, &num, (OMX_U8**) components);
     av_strlcpy(str, components[0], str_size);
 end:
+/*
+    // Leak the component strings - TI OMAP3 OMX replaces these pointers with
+    // pointers to its internal strings, and freeing them causes a crash.
     for (i = 0; i < num; i++)
         av_free(components[i]);
+*/
     av_free(components);
     return ret;
 }
@@ -486,6 +493,8 @@ static const struct {
     { OMX_COLOR_FormatYUV420PackedPlanar,        AV_PIX_FMT_YUV420P },
     { OMX_COLOR_FormatYUV420SemiPlanar,          AV_PIX_FMT_NV12    },
     { OMX_COLOR_FormatYUV420PackedSemiPlanar,    AV_PIX_FMT_NV12    },
+    { OMX_TI_COLOR_FormatYUV420PackedSemiPlanar, AV_PIX_FMT_NV12    },
+    { OMX_QCOM_COLOR_FormatYVU420SemiPlanar,     AV_PIX_FMT_NV21    },
     { OMX_COLOR_FormatUnused,                    AV_PIX_FMT_NONE    },
 };
 
@@ -509,6 +518,7 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
     OMX_VIDEO_PARAM_BITRATETYPE vid_param_bitrate = { 0 };
     OMX_ERRORTYPE err;
     int i, default_size;
+    int ducati = !!strstr(s->component_name, "OMX.TI.DUCATI1.");
 
     s->version.s.nVersionMajor = 1;
     s->version.s.nVersionMinor = 1;
@@ -587,10 +597,11 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
         // that can be done here.
         in_port_params.format.video.nStride      = s->stride;
         in_port_params.format.video.nSliceHeight = s->plane_size;
-        if (avctx->framerate.den > 0 && avctx->framerate.num > 0)
-            in_port_params.format.video.xFramerate = (1 << 16) * avctx->framerate.num / avctx->framerate.den;
-        else
-            in_port_params.format.video.xFramerate = (1 << 16) * avctx->time_base.den / avctx->time_base.num;
+        in_port_params.format.video.xFramerate = 30 << 16;
+        if (!strcmp(s->component_name, "OMX.TI.Video.encoder")) {
+            in_port_params.format.video.nStride = -1;
+            in_port_params.format.video.nSliceHeight = -1;
+        }
     } else {
         if (avctx->codec->id == AV_CODEC_ID_MPEG4)
             in_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingMPEG4;
@@ -614,7 +625,7 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
     CHECK(err);
     err = OMX_GetParameter(s->handle, OMX_IndexParamPortDefinition, &in_port_params);
     CHECK(err);
-    if (encode) {
+    if (encode && strcmp(s->component_name, "OMX.TI.Video.encoder")) {
         s->stride     = in_port_params.format.video.nStride;
         s->plane_size = in_port_params.format.video.nSliceHeight;
     }
@@ -630,8 +641,11 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
     if (encode) {
         out_port_params.format.video.nStride      = 0;
         out_port_params.format.video.nSliceHeight = 0;
-        out_port_params.format.video.nBitrate     = avctx->bit_rate;
-        out_port_params.format.video.xFramerate   = in_port_params.format.video.xFramerate;
+        // The qcom OMX component doesn't accept any framerate (25 isn't supported), only certain (at least 15 and 30),
+        // so ask for 30 and adjust the bitrate accordingly
+        out_port_params.format.video.nBitrate = avctx->bit_rate * 30 * avctx->time_base.num / avctx->time_base.den;
+        if (!ducati)
+            out_port_params.format.video.xFramerate = 30 << 16;
     }
     out_port_params.format.video.bFlagErrorConcealment  = OMX_FALSE;
     if (encode) {
@@ -656,7 +670,7 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
         INIT_STRUCT(vid_param_bitrate);
         vid_param_bitrate.nPortIndex     = s->out_port;
         vid_param_bitrate.eControlRate   = OMX_Video_ControlRateVariable;
-        vid_param_bitrate.nTargetBitrate = avctx->bit_rate;
+        vid_param_bitrate.nTargetBitrate = avctx->bit_rate * 30 / avctx->time_base.den;
         err = OMX_SetParameter(s->handle, OMX_IndexParamVideoBitrate, &vid_param_bitrate);
         if (err != OMX_ErrorNone)
             av_log(avctx, AV_LOG_WARNING, "Unable to set video bitrate parameter\n");
@@ -667,7 +681,10 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
             avc.nPortIndex = s->out_port;
             err = OMX_GetParameter(s->handle, OMX_IndexParamVideoAvc, &avc);
             CHECK(err);
-            avc.nBFrames = 0;
+            if (ducati) {
+                avc.eProfile = OMX_VIDEO_AVCProfileBaseline; // stagefright does this
+                avc.nBFrames = 0; // This is necessary for the encoder to work
+            }
             avc.nPFrames = avctx->gop_size - 1;
             err = OMX_SetParameter(s->handle, OMX_IndexParamVideoAvc, &avc);
             CHECK(err);
@@ -922,7 +939,8 @@ static av_cold int omx_encode_init(AVCodecContext *avctx)
     if ((ret = omx_component_init(avctx, role, 1)) < 0)
         goto fail;
 
-    if (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) {
+    // The TI OMAP3 encoder doesn't seem to return separate CODECCONFIG buffers at all
+    if (strcmp(s->component_name, "OMX.TI.Video.encoder") && avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) {
         while (1) {
             buffer = get_buffer(&s->output_mutex, &s->output_cond,
                                 &s->num_done_out_buffers, s->done_out_buffers, 1);
@@ -1161,6 +1179,8 @@ static int omx_update_out_def(AVCodecContext *avctx)
     s->stride = out_port_params.format.video.nStride;
     s->plane_size = out_port_params.format.video.nSliceHeight;
     s->color_format = out_port_params.format.video.eColorFormat;
+    if (strstr(s->component_name, "OMX.qcom.video.decoder") && s->color_format == OMX_COLOR_FormatYUV420Planar)
+        s->color_format = OMX_QCOM_COLOR_FormatYVU420SemiPlanar;
 
     INIT_STRUCT(crop_rect);
     crop_rect.nPortIndex = s->out_port;
@@ -1168,6 +1188,8 @@ static int omx_update_out_def(AVCodecContext *avctx)
     if (err == OMX_ErrorNone) {
         avctx->width = crop_rect.nWidth;
         avctx->height = crop_rect.nHeight;
+        if (out_port_params.format.video.eColorFormat == OMX_TI_COLOR_FormatYUV420PackedSemiPlanar)
+            s->plane_size -= crop_rect.nTop/2;
     }
 
     if (s->plane_size < avctx->height)
@@ -1314,6 +1336,9 @@ static int omx_reconfigure_out(AVCodecContext *avctx)
 
     s->out_buffer_headers = av_mallocz(sizeof(OMX_BUFFERHEADERTYPE*) * s->num_out_buffers);
     s->done_out_buffers   = av_mallocz(sizeof(OMX_BUFFERHEADERTYPE*) * s->num_out_buffers);
+
+    if (strstr(s->component_name, "OMX.TI.DUCATI1."))
+        out_port_params.nBufferSize *= 2;
 
     for (i = 0; i < s->num_out_buffers && err == OMX_ErrorNone; i++)
         err = OMX_AllocateBuffer(s->handle, &s->out_buffer_headers[i], s->out_port, s, out_port_params.nBufferSize);
