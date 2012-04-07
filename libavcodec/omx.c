@@ -1,5 +1,5 @@
 /*
- * OMX Video encoder
+ * OMX Video encoder/decoder
  * Copyright (C) 2011 Martin Storsjo
  *
  * This file is part of Libav.
@@ -220,6 +220,8 @@ typedef struct OMXCodecContext {
     OMX_VERSIONTYPE version;
     OMX_HANDLETYPE handle;
     int in_port, out_port;
+    int reconfigure_out, update_out_def;
+    int disabled, enabled;
     OMX_COLOR_FORMATTYPE color_format;
     int stride, plane_size;
 
@@ -304,9 +306,17 @@ static OMX_ERRORTYPE event_handler(OMX_HANDLETYPE component, OMX_PTR app_data, O
             pthread_cond_broadcast(&s->state_cond);
             pthread_mutex_unlock(&s->state_mutex);
         } else if (data1 == OMX_CommandPortDisable) {
+            pthread_mutex_lock(&s->state_mutex);
+            s->disabled = 1;
             av_log(s->avctx, AV_LOG_VERBOSE, "OMX port %"PRIu32" disabled\n", (uint32_t) data2);
+            pthread_cond_broadcast(&s->state_cond);
+            pthread_mutex_unlock(&s->state_mutex);
         } else if (data1 == OMX_CommandPortEnable) {
+            pthread_mutex_lock(&s->state_mutex);
+            s->enabled = 1;
             av_log(s->avctx, AV_LOG_VERBOSE, "OMX port %"PRIu32" enabled\n", (uint32_t) data2);
+            pthread_cond_broadcast(&s->state_cond);
+            pthread_mutex_unlock(&s->state_mutex);
         } else {
             av_log(s->avctx, AV_LOG_VERBOSE, "OMX command complete, command %"PRIu32", value %"PRIu32"\n",
                                              (uint32_t) data1, (uint32_t) data2);
@@ -314,6 +324,19 @@ static OMX_ERRORTYPE event_handler(OMX_HANDLETYPE component, OMX_PTR app_data, O
         break;
     case OMX_EventPortSettingsChanged:
         av_log(s->avctx, AV_LOG_VERBOSE, "OMX port %"PRIu32" settings changed\n", (uint32_t) data1);
+        pthread_mutex_lock(&s->input_mutex);
+        pthread_mutex_lock(&s->output_mutex);
+        if (s->out_port == data1 && (data2 == 0 || data2 == OMX_IndexParamPortDefinition)) {
+            s->reconfigure_out = 1;
+            pthread_cond_broadcast(&s->input_cond);
+            pthread_cond_broadcast(&s->output_cond);
+        } else if (s->out_port == data1 && data2 == OMX_IndexConfigCommonOutputCrop) {
+            s->update_out_def = 1;
+            pthread_cond_broadcast(&s->input_cond);
+            pthread_cond_broadcast(&s->output_cond);
+        }
+        pthread_mutex_unlock(&s->output_mutex);
+        pthread_mutex_unlock(&s->input_mutex);
         break;
     default:
         av_log(s->avctx, AV_LOG_VERBOSE, "OMX event %d %"PRIx32" %"PRIx32"\n",
@@ -364,6 +387,10 @@ static av_cold int find_component(void *logctx, const char *role, char *str,
     int ret = 0;
 
 #if CONFIG_OMX_RPI
+    if (av_strstart(role, "video_decoder.", NULL)) {
+        av_strlcpy(str, "OMX.broadcom.video_decode", str_size);
+        return 0;
+    }
     if (av_strstart(role, "video_encoder.", NULL)) {
         av_strlcpy(str, "OMX.broadcom.video_encode", str_size);
         return 0;
@@ -405,7 +432,23 @@ static av_cold int wait_for_state(OMXCodecContext *s, OMX_STATETYPE state)
     return ret;
 }
 
-static av_cold int omx_component_init(AVCodecContext *avctx, const char *role)
+static av_cold int wait_for_port_event(OMXCodecContext *s, int enabled)
+{
+    int ret = 0;
+    pthread_mutex_lock(&s->state_mutex);
+    while (((enabled && !s->enabled) || (!enabled && !s->disabled)) && s->error == OMX_ErrorNone)
+        pthread_cond_wait(&s->state_cond, &s->state_mutex);
+    if (s->error != OMX_ErrorNone)
+        ret = AVERROR_INVALIDDATA;
+    if (enabled)
+        s->enabled = 0;
+    else
+        s->disabled = 0;
+    pthread_mutex_unlock(&s->state_mutex);
+    return ret;
+}
+
+static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, int encode)
 {
     OMXCodecContext *s = avctx->priv_data;
     OMX_PARAM_COMPONENTROLETYPE role_params = { 0 };
@@ -460,22 +503,24 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role)
         return AVERROR_UNKNOWN;
     }
 
-    s->color_format = 0;
-    for (i = 0; ; i++) {
-        INIT_STRUCT(video_port_format);
-        video_port_format.nIndex = i;
-        video_port_format.nPortIndex = s->in_port;
-        if (OMX_GetParameter(s->handle, OMX_IndexParamVideoPortFormat, &video_port_format) != OMX_ErrorNone)
-            break;
-        if (video_port_format.eColorFormat == OMX_COLOR_FormatYUV420Planar ||
-            video_port_format.eColorFormat == OMX_COLOR_FormatYUV420PackedPlanar) {
-            s->color_format = video_port_format.eColorFormat;
-            break;
+    if (encode) {
+        s->color_format = 0;
+        for (i = 0; ; i++) {
+            INIT_STRUCT(video_port_format);
+            video_port_format.nIndex = i;
+            video_port_format.nPortIndex = s->in_port;
+            if (OMX_GetParameter(s->handle, OMX_IndexParamVideoPortFormat, &video_port_format) != OMX_ErrorNone)
+                break;
+            if (video_port_format.eColorFormat == OMX_COLOR_FormatYUV420Planar ||
+                video_port_format.eColorFormat == OMX_COLOR_FormatYUV420PackedPlanar) {
+                s->color_format = video_port_format.eColorFormat;
+                break;
+            }
         }
-    }
-    if (s->color_format == 0) {
-        av_log(avctx, AV_LOG_ERROR, "No supported pixel formats (%d formats available)\n", i);
-        return AVERROR_UNKNOWN;
+        if (s->color_format == 0) {
+            av_log(avctx, AV_LOG_ERROR, "No supported pixel formats (%d formats available)\n", i);
+            return AVERROR_UNKNOWN;
+        }
     }
 
     in_port_params.bEnabled   = OMX_TRUE;
@@ -484,26 +529,38 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role)
 
     in_port_params.format.video.pNativeRender         = NULL;
     in_port_params.format.video.bFlagErrorConcealment = OMX_FALSE;
-    in_port_params.format.video.eColorFormat          = s->color_format;
-    s->stride     = avctx->width;
-    s->plane_size = avctx->height;
-    // If specific codecs need to manually override the stride/plane_size,
-    // that can be done here.
-    in_port_params.format.video.nStride      = s->stride;
-    in_port_params.format.video.nSliceHeight = s->plane_size;
+    if (encode) {
+        in_port_params.format.video.eColorFormat = s->color_format;
+        s->stride     = avctx->width;
+        s->plane_size = avctx->height;
+        // If specific codecs need to manually override the stride/plane_size,
+        // that can be done here.
+        in_port_params.format.video.nStride      = s->stride;
+        in_port_params.format.video.nSliceHeight = s->plane_size;
+        if (avctx->framerate.den > 0 && avctx->framerate.num > 0)
+            in_port_params.format.video.xFramerate = (1 << 16) * avctx->framerate.num / avctx->framerate.den;
+        else
+            in_port_params.format.video.xFramerate = (1 << 16) * avctx->time_base.den / avctx->time_base.num;
+    } else {
+        if (avctx->codec->id == AV_CODEC_ID_MPEG4)
+            in_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingMPEG4;
+        else if (avctx->codec->id == AV_CODEC_ID_H264)
+            in_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingAVC;
+        in_port_params.format.video.nStride = -1;
+        in_port_params.format.video.nSliceHeight = -1;
+        in_port_params.format.video.xFramerate = 30 << 16;
+    }
     in_port_params.format.video.nFrameWidth  = avctx->width;
     in_port_params.format.video.nFrameHeight = avctx->height;
-    if (avctx->framerate.den > 0 && avctx->framerate.num > 0)
-        in_port_params.format.video.xFramerate = (1 << 16) * avctx->framerate.num / avctx->framerate.den;
-    else
-        in_port_params.format.video.xFramerate = (1 << 16) * avctx->time_base.den / avctx->time_base.num;
 
     err = OMX_SetParameter(s->handle, OMX_IndexParamPortDefinition, &in_port_params);
     CHECK(err);
     err = OMX_GetParameter(s->handle, OMX_IndexParamPortDefinition, &in_port_params);
     CHECK(err);
-    s->stride         = in_port_params.format.video.nStride;
-    s->plane_size     = in_port_params.format.video.nSliceHeight;
+    if (encode) {
+        s->stride     = in_port_params.format.video.nStride;
+        s->plane_size = in_port_params.format.video.nSliceHeight;
+    }
     s->num_in_buffers = in_port_params.nBufferCountActual;
 
     err = OMX_GetParameter(s->handle, OMX_IndexParamPortDefinition, &out_port_params);
@@ -511,17 +568,21 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role)
     out_port_params.bPopulated = OMX_FALSE;
     out_port_params.eDomain    = OMX_PortDomainVideo;
     out_port_params.format.video.pNativeRender = NULL;
-    out_port_params.format.video.nFrameWidth   = avctx->width;
-    out_port_params.format.video.nFrameHeight  = avctx->height;
-    out_port_params.format.video.nStride       = 0;
-    out_port_params.format.video.nSliceHeight  = 0;
-    out_port_params.format.video.nBitrate      = avctx->bit_rate;
-    out_port_params.format.video.xFramerate    = in_port_params.format.video.xFramerate;
+    out_port_params.format.video.nFrameWidth  = avctx->width;
+    out_port_params.format.video.nFrameHeight = avctx->height;
+    if (encode) {
+        out_port_params.format.video.nStride      = 0;
+        out_port_params.format.video.nSliceHeight = 0;
+        out_port_params.format.video.nBitrate     = avctx->bit_rate;
+        out_port_params.format.video.xFramerate   = in_port_params.format.video.xFramerate;
+    }
     out_port_params.format.video.bFlagErrorConcealment  = OMX_FALSE;
-    if (avctx->codec->id == AV_CODEC_ID_MPEG4)
-        out_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingMPEG4;
-    else if (avctx->codec->id == AV_CODEC_ID_H264)
-        out_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingAVC;
+    if (encode) {
+        if (avctx->codec->id == AV_CODEC_ID_MPEG4)
+            out_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingMPEG4;
+        else if (avctx->codec->id == AV_CODEC_ID_H264)
+            out_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingAVC;
+    }
 
     err = OMX_SetParameter(s->handle, OMX_IndexParamPortDefinition, &out_port_params);
     CHECK(err);
@@ -529,24 +590,26 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role)
     CHECK(err);
     s->num_out_buffers = out_port_params.nBufferCountActual;
 
-    INIT_STRUCT(vid_param_bitrate);
-    vid_param_bitrate.nPortIndex     = s->out_port;
-    vid_param_bitrate.eControlRate   = OMX_Video_ControlRateVariable;
-    vid_param_bitrate.nTargetBitrate = avctx->bit_rate;
-    err = OMX_SetParameter(s->handle, OMX_IndexParamVideoBitrate, &vid_param_bitrate);
-    if (err != OMX_ErrorNone)
-        av_log(avctx, AV_LOG_WARNING, "Unable to set video bitrate parameter\n");
+    if (encode) {
+        INIT_STRUCT(vid_param_bitrate);
+        vid_param_bitrate.nPortIndex     = s->out_port;
+        vid_param_bitrate.eControlRate   = OMX_Video_ControlRateVariable;
+        vid_param_bitrate.nTargetBitrate = avctx->bit_rate;
+        err = OMX_SetParameter(s->handle, OMX_IndexParamVideoBitrate, &vid_param_bitrate);
+        if (err != OMX_ErrorNone)
+            av_log(avctx, AV_LOG_WARNING, "Unable to set video bitrate parameter\n");
 
-    if (avctx->codec->id == AV_CODEC_ID_H264) {
-        OMX_VIDEO_PARAM_AVCTYPE avc = { 0 };
-        INIT_STRUCT(avc);
-        avc.nPortIndex = s->out_port;
-        err = OMX_GetParameter(s->handle, OMX_IndexParamVideoAvc, &avc);
-        CHECK(err);
-        avc.nBFrames = 0;
-        avc.nPFrames = avctx->gop_size - 1;
-        err = OMX_SetParameter(s->handle, OMX_IndexParamVideoAvc, &avc);
-        CHECK(err);
+        if (avctx->codec->id == AV_CODEC_ID_H264) {
+            OMX_VIDEO_PARAM_AVCTYPE avc = { 0 };
+            INIT_STRUCT(avc);
+            avc.nPortIndex = s->out_port;
+            err = OMX_GetParameter(s->handle, OMX_IndexParamVideoAvc, &avc);
+            CHECK(err);
+            avc.nBFrames = 0;
+            avc.nPFrames = avctx->gop_size - 1;
+            err = OMX_SetParameter(s->handle, OMX_IndexParamVideoAvc, &avc);
+            CHECK(err);
+        }
     }
 
     err = OMX_SendCommand(s->handle, OMX_CommandStateSet, OMX_StateIdle, NULL);
@@ -688,7 +751,7 @@ static av_cold int omx_encode_init(AVCodecContext *avctx)
 
     av_log(avctx, AV_LOG_INFO, "Using %s\n", s->component_name);
 
-    if ((ret = omx_component_init(avctx, role)) < 0)
+    if ((ret = omx_component_init(avctx, role, 1)) < 0)
         goto fail;
 
     if (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) {
@@ -913,6 +976,274 @@ static av_cold int omx_encode_end(AVCodecContext *avctx)
     return 0;
 }
 
+static int omx_update_out_def(AVCodecContext *avctx)
+{
+    OMXCodecContext *s = avctx->priv_data;
+    OMX_PARAM_PORTDEFINITIONTYPE out_port_params = { 0 };
+    OMX_ERRORTYPE err;
+    OMX_CONFIG_RECTTYPE crop_rect;
+
+    INIT_STRUCT(out_port_params);
+    out_port_params.nPortIndex = s->out_port;
+    err = OMX_GetParameter(s->handle, OMX_IndexParamPortDefinition, &out_port_params);
+    CHECK(err);
+
+    avctx->width = out_port_params.format.video.nFrameWidth;
+    avctx->height = out_port_params.format.video.nFrameHeight;
+    s->stride = out_port_params.format.video.nStride;
+    s->plane_size = out_port_params.format.video.nSliceHeight;
+    s->color_format = out_port_params.format.video.eColorFormat;
+
+    INIT_STRUCT(crop_rect);
+    crop_rect.nPortIndex = s->out_port;
+    err = OMX_GetConfig(s->handle, OMX_IndexConfigCommonOutputCrop, &crop_rect);
+    if (err == OMX_ErrorNone) {
+        avctx->width = crop_rect.nWidth;
+        avctx->height = crop_rect.nHeight;
+    }
+
+    if (s->plane_size < avctx->height)
+        s->plane_size = avctx->height;
+    if (s->stride < avctx->width)
+        s->stride = avctx->width;
+
+    switch (s->color_format) {
+    case OMX_COLOR_FormatYUV420Planar:
+    case OMX_COLOR_FormatYUV420PackedPlanar:
+    default:
+        avctx->pix_fmt = AV_PIX_FMT_YUV420P;
+        break;
+    case OMX_COLOR_FormatYUV420SemiPlanar:
+    case OMX_COLOR_FormatYUV420PackedSemiPlanar:
+        avctx->pix_fmt = AV_PIX_FMT_NV12;
+        break;
+    }
+    return 0;
+}
+
+static av_cold int omx_decode_init(AVCodecContext *avctx)
+{
+    OMXCodecContext *s = avctx->priv_data;
+    int ret = AVERROR_ENCODER_NOT_FOUND;
+    const char *role;
+
+    if ((ret = omx_init(avctx, s->libname, s->libprefix)) < 0)
+        return ret;
+
+    pthread_mutex_init(&s->state_mutex, NULL);
+    pthread_cond_init(&s->state_cond, NULL);
+    pthread_mutex_init(&s->input_mutex, NULL);
+    pthread_cond_init(&s->input_cond, NULL);
+    pthread_mutex_init(&s->output_mutex, NULL);
+    pthread_cond_init(&s->output_cond, NULL);
+    s->avctx = avctx;
+    s->state = OMX_StateLoaded;
+    s->error = OMX_ErrorNone;
+
+    switch (avctx->codec->id) {
+    case AV_CODEC_ID_MPEG4:
+        role = "video_decoder.mpeg4";
+        break;
+    case AV_CODEC_ID_H264:
+        role = "video_decoder.avc";
+        break;
+    default:
+        return AVERROR(ENOSYS);
+    }
+
+    if ((ret = find_component(avctx, role, s->component_name, sizeof(s->component_name))) < 0)
+        return ret;
+
+    av_log(avctx, AV_LOG_INFO, "Using %s\n", s->component_name);
+
+    if ((ret = omx_component_init(avctx, role, 0)) < 0)
+        return ret;
+
+    // If we have MP4 style H264, it is filtered and the extradata is prepended to packets;
+    // don't feed the MP4 style extradata to the decoder.
+    if (avctx->extradata_size && (avctx->codec->id != AV_CODEC_ID_H264 || avctx->extradata[0] != 1)) {
+        OMX_BUFFERHEADERTYPE *buffer = get_buffer(&s->input_mutex, &s->input_cond,
+                                                  &s->num_free_in_buffers, s->free_in_buffers, 1);
+
+        memcpy(buffer->pBuffer, avctx->extradata, avctx->extradata_size);
+        buffer->nFilledLen = avctx->extradata_size;
+        buffer->nFlags = OMX_BUFFERFLAG_CODECCONFIG | OMX_BUFFERFLAG_ENDOFFRAME;
+        buffer->nOffset = 0;
+        buffer->nTimeStamp = to_omx_ticks(0);
+        OMX_EmptyThisBuffer(s->handle, buffer);
+    }
+
+    if (omx_update_out_def(avctx))
+        return AVERROR_INVALIDDATA;
+
+    return 0;
+}
+
+static int omx_reconfigure_out(AVCodecContext *avctx)
+{
+    OMXCodecContext *s = avctx->priv_data;
+    OMX_PARAM_PORTDEFINITIONTYPE out_port_params = { 0 };
+    OMX_ERRORTYPE err;
+    int i;
+
+    err = OMX_SendCommand(s->handle, OMX_CommandPortDisable, s->out_port, NULL);
+    CHECK(err);
+
+    for (i = 0; i < s->num_out_buffers; i++) {
+        OMX_BUFFERHEADERTYPE *buffer = get_buffer(&s->output_mutex, &s->output_cond,
+                                                  &s->num_done_out_buffers, s->done_out_buffers, 1);
+        OMX_FreeBuffer(s->handle, s->out_port, buffer);
+    }
+
+    av_freep(&s->out_buffer_headers);
+    av_freep(&s->done_out_buffers);
+
+    if (wait_for_port_event(s, 0))
+        return AVERROR_INVALIDDATA;
+
+    INIT_STRUCT(out_port_params);
+    out_port_params.nPortIndex = s->out_port;
+    err = OMX_GetParameter(s->handle, OMX_IndexParamPortDefinition, &out_port_params);
+    CHECK(err);
+    err = OMX_SetParameter(s->handle, OMX_IndexParamPortDefinition, &out_port_params);
+    CHECK(err);
+
+    s->num_done_out_buffers = 0;
+    s->num_out_buffers = out_port_params.nBufferCountActual;
+
+    err = OMX_SendCommand(s->handle, OMX_CommandPortEnable, s->out_port, NULL);
+    CHECK(err);
+
+    s->out_buffer_headers = av_mallocz(sizeof(OMX_BUFFERHEADERTYPE*) * s->num_out_buffers);
+    s->done_out_buffers   = av_mallocz(sizeof(OMX_BUFFERHEADERTYPE*) * s->num_out_buffers);
+
+    for (i = 0; i < s->num_out_buffers && err == OMX_ErrorNone; i++)
+        err = OMX_AllocateBuffer(s->handle, &s->out_buffer_headers[i], s->out_port, s, out_port_params.nBufferSize);
+    CHECK(err);
+    s->num_out_buffers = i;
+
+    if (wait_for_port_event(s, 1))
+        return AVERROR_INVALIDDATA;
+
+    for (i = 0; i < s->num_out_buffers; i++)
+        OMX_FillThisBuffer(s->handle, s->out_buffer_headers[i]);
+
+    omx_update_out_def(avctx);
+    return 0;
+}
+
+static int omx_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
+{
+    OMXCodecContext *s = avctx->priv_data;
+    OMX_BUFFERHEADERTYPE *buffer;
+    int ret;
+
+    while (!*got_frame) {
+        if (avpkt && avpkt->size) {
+            // TODO: Check num_done_out_buffers too, unless we've returned data already
+            pthread_mutex_lock(&s->input_mutex);
+            while (!s->num_free_in_buffers && !s->reconfigure_out && !s->update_out_def)
+                pthread_cond_wait(&s->input_cond, &s->input_mutex);
+            if (s->reconfigure_out) {
+                s->reconfigure_out = 0;
+                pthread_mutex_unlock(&s->input_mutex);
+                if (omx_reconfigure_out(avctx))
+                    return AVERROR_INVALIDDATA;
+                continue;
+            }
+            if (s->update_out_def) {
+                s->update_out_def = 0;
+                pthread_mutex_unlock(&s->input_mutex);
+                if (omx_update_out_def(avctx))
+                    return AVERROR_INVALIDDATA;
+                continue;
+            }
+            buffer = s->free_in_buffers[--s->num_free_in_buffers];
+            pthread_mutex_unlock(&s->input_mutex);
+
+            memcpy(buffer->pBuffer, avpkt->data, avpkt->size);
+            buffer->nFilledLen = avpkt->size;
+            buffer->nFlags = OMX_BUFFERFLAG_ENDOFFRAME;
+            buffer->nOffset = 0;
+            buffer->nTimeStamp = to_omx_ticks(avpkt->pts);
+            OMX_EmptyThisBuffer(s->handle, buffer);
+        } else if (!s->eos_sent) {
+            buffer = get_buffer(&s->input_mutex, &s->input_cond,
+                                &s->num_free_in_buffers, s->free_in_buffers, 1);
+            buffer->nFilledLen = 0;
+            buffer->nFlags = OMX_BUFFERFLAG_EOS;
+            OMX_EmptyThisBuffer(s->handle, buffer);
+            s->eos_sent = 1;
+        }
+
+        pthread_mutex_lock(&s->output_mutex);
+        if (!avpkt && !s->got_eos) {
+            while (!s->num_done_out_buffers)
+                pthread_cond_wait(&s->output_cond, &s->output_mutex);
+        }
+        if (s->reconfigure_out) {
+            s->reconfigure_out = 0;
+            pthread_mutex_unlock(&s->output_mutex);
+            if (omx_reconfigure_out(avctx))
+                return AVERROR_INVALIDDATA;
+            pthread_mutex_lock(&s->output_mutex);
+        }
+        if (s->update_out_def) {
+            s->update_out_def = 0;
+            pthread_mutex_unlock(&s->output_mutex);
+            if (omx_update_out_def(avctx))
+                return AVERROR_INVALIDDATA;
+            pthread_mutex_lock(&s->output_mutex);
+        }
+        if (s->num_done_out_buffers) {
+            buffer = s->done_out_buffers[0];
+            s->num_done_out_buffers--;
+            memmove(&s->done_out_buffers[0], &s->done_out_buffers[1], s->num_done_out_buffers * sizeof(OMX_BUFFERHEADERTYPE*));
+        } else {
+            buffer = NULL;
+        }
+        pthread_mutex_unlock(&s->output_mutex);
+
+        if (buffer && buffer->nFlags & OMX_BUFFERFLAG_EOS)
+            s->got_eos = 1;
+
+        if (buffer && !buffer->nFilledLen) {
+            OMX_FillThisBuffer(s->handle, buffer);
+            buffer = NULL;
+        }
+
+        if (buffer) {
+            const uint8_t *src[4];
+            int linesize[4];
+            AVFrame *frame = data;
+            if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
+                return ret;
+            av_image_fill_arrays((uint8_t**) src, linesize, buffer->pBuffer, avctx->pix_fmt, s->stride, s->plane_size, 1);
+            av_image_copy(frame->data, frame->linesize, src, linesize, avctx->pix_fmt, avctx->width, avctx->height);
+
+            frame->pts = from_omx_ticks(buffer->nTimeStamp);
+            frame->pkt_dts = AV_NOPTS_VALUE;
+#if FF_API_PKT_PTS
+FF_DISABLE_DEPRECATION_WARNINGS
+            frame->pkt_pts = frame->pts;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+            *got_frame = 1;
+            OMX_FillThisBuffer(s->handle, buffer);
+        }
+        break;
+    }
+    return avpkt->size;
+}
+
+static av_cold int omx_decode_end(AVCodecContext *avctx)
+{
+    OMXCodecContext *s = avctx->priv_data;
+
+    cleanup(s);
+    return 0;
+}
+
 #define OFFSET(x) offsetof(OMXCodecContext, x)
 #define VDE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 #define VE  AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
@@ -967,4 +1298,45 @@ AVCodec ff_h264_omx_encoder = {
     .capabilities     = AV_CODEC_CAP_DELAY,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
     .priv_class       = &omx_h264enc_class,
+};
+
+static const AVClass omx_h264dec_class = {
+    .class_name = "h264_omx_dec",
+    .item_name  = av_default_item_name,
+    .option     = options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
+AVCodec ff_h264_omx_decoder = {
+    .name             = "h264_omx",
+    .long_name        = NULL_IF_CONFIG_SMALL("OpenMAX IL H264 video decoder"),
+    .type             = AVMEDIA_TYPE_VIDEO,
+    .id               = AV_CODEC_ID_H264,
+    .priv_data_size   = sizeof(OMXCodecContext),
+    .init             = omx_decode_init,
+    .decode           = omx_decode_frame,
+    .close            = omx_decode_end,
+    .capabilities     = AV_CODEC_CAP_DELAY,
+    .caps_internal    = FF_CODEC_CAP_SETS_PKT_DTS | FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .priv_class       = &omx_h264dec_class,
+    .bsfs             = "h264_mp4toannexb",
+};
+
+static const AVClass omx_mpeg4dec_class = {
+    .class_name = "mpeg4_omx_dec",
+    .item_name  = av_default_item_name,
+    .option     = options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
+AVCodec ff_mpeg4_omx_decoder = {
+    .name             = "mpeg4_omx",
+    .long_name        = NULL_IF_CONFIG_SMALL("OpenMAX IL MPEG4 video decoder"),
+    .type             = AVMEDIA_TYPE_VIDEO,
+    .id               = AV_CODEC_ID_MPEG4,
+    .priv_data_size   = sizeof(OMXCodecContext),
+    .init             = omx_decode_init,
+    .decode           = omx_decode_frame,
+    .close            = omx_decode_end,
+    .capabilities     = AV_CODEC_CAP_DELAY,
+    .caps_internal    = FF_CODEC_CAP_SETS_PKT_DTS | FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .priv_class       = &omx_mpeg4dec_class,
 };

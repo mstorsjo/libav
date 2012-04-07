@@ -497,7 +497,7 @@ void avcodec_register_all(void)
      * above is available */
     REGISTER_ENCDEC (LIBOPENH264,       libopenh264);
     REGISTER_ENCODER(H264_NVENC,        h264_nvenc);
-    REGISTER_ENCODER(H264_OMX,          h264_omx);
+    REGISTER_ENCDEC (H264_OMX,          h264_omx);
     REGISTER_ENCODER(H264_QSV,          h264_qsv);
     REGISTER_ENCODER(H264_VAAPI,        h264_vaapi);
     REGISTER_ENCODER(LIBKVAZAAR,        libkvazaar);
@@ -507,7 +507,7 @@ void avcodec_register_all(void)
     REGISTER_ENCODER(MJPEG_VAAPI,       mjpeg_vaapi);
     REGISTER_ENCODER(MPEG2_QSV,         mpeg2_qsv);
     REGISTER_ENCODER(MPEG2_VAAPI,       mpeg2_vaapi);
-    REGISTER_ENCODER(MPEG4_OMX,         mpeg4_omx);
+    REGISTER_ENCDEC (MPEG4_OMX,         mpeg4_omx);
 #if FF_API_NVENC_OLD_NAME
     REGISTER_ENCODER(NVENC_H264,        nvenc_h264);
     REGISTER_ENCODER(NVENC_HEVC,        nvenc_hevc);
