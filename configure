@@ -222,6 +222,7 @@ External library support:
                            native MPEG-4/Xvid encoder exists [no]
   --enable-mmal            enable decoding via MMAL [no]
   --enable-nvenc           enable encoding via NVENC [no]
+  --enable-omx             enable OpenMAX [no]
   --enable-openssl         enable openssl [no]
   --enable-x11grab         enable X11 grabbing (legacy) [no]
   --enable-zlib            enable zlib [autodetect]
@@ -1196,6 +1197,7 @@ EXTERNAL_LIBRARY_LIST="
     libxvid
     mmal
     nvenc
+    omx
     openssl
     x11grab
     zlib
@@ -2111,6 +2113,10 @@ libx264_encoder_deps="libx264"
 libx265_encoder_deps="libx265"
 libxavs_encoder_deps="libxavs"
 libxvid_encoder_deps="libxvid"
+omx_h264_decoder_deps="omx dlopen"
+omx_h264_encoder_deps="omx dlopen"
+omx_mpeg4_decoder_deps="omx dlopen"
+omx_mpeg4_encoder_deps="omx dlopen"
 
 # demuxers / muxers
 ac3_demuxer_select="ac3_parser"
@@ -4363,10 +4369,13 @@ enabled mmal              && { check_lib interface/mmal/mmal.h mmal_port_connect
                                     check_lib interface/mmal/mmal.h mmal_port_connect ; }
                                 check_lib interface/mmal/mmal.h mmal_port_connect ; } ||
                                die "ERROR: mmal not found"; }
+enabled omx               && { check_header OMX_Core.h || die "ERROR: OpenMAX headers not found"; }
 enabled openssl           && { check_lib openssl/ssl.h SSL_library_init -lssl -lcrypto ||
                                check_lib openssl/ssl.h SSL_library_init -lssl32 -leay32 ||
                                check_lib openssl/ssl.h SSL_library_init -lssl -lcrypto -lws2_32 -lgdi32 ||
                                die "ERROR: openssl not found"; }
+
+enabled omx && add_extralibs $ldl
 
 if enabled gnutls; then
     { check_lib2 gmp.h mpz_export -lgmp && enable gmp; } ||
