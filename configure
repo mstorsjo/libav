@@ -262,6 +262,7 @@ Optimization options (experts only):
   --disable-vis            disable VIS optimizations
   --disable-inline-asm     disable use of inline assembler
   --disable-yasm           disable use of yasm assembler
+  --disable-fast-unaligned consider unaligned accesses slow
 
 Developer options (useful when working on Libav itself):
   --disable-debug          disable debugging symbols
@@ -1281,6 +1282,7 @@ CMDLINE_SELECT="
     cross_compile
     debug
     extra_warnings
+    fast_unaligned
     inline_asm
     logging
     optimizations
