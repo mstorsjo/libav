@@ -291,6 +291,14 @@ static av_cold int find_component(void *logctx, const char *role, char *str,
     OMX_U32 i, num = 0;
     char **components;
 
+    if (av_strstart(role, "video_decoder.", NULL)) {
+        av_strlcpy(str, "OMX.broadcom.video_decode", str_size);
+        return 0;
+    }
+    if (av_strstart(role, "video_encoder.", NULL)) {
+        av_strlcpy(str, "OMX.broadcom.video_encode", str_size);
+        return 0;
+    }
     omx_context->ptr_GetComponentsOfRole(role, &num, NULL);
     if (!num) {
         av_log(logctx, AV_LOG_WARNING, "No component for role %s found\n", role);
