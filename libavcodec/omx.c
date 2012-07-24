@@ -41,6 +41,7 @@
 typedef struct OMXContext {
     int users;
     void *lib;
+    void *lib2;
     OMX_ERRORTYPE (*ptr_Init)(void);
     OMX_ERRORTYPE (*ptr_Deinit)(void);
     OMX_ERRORTYPE (*ptr_ComponentNameEnum)(OMX_STRING, OMX_U32, OMX_U32);
@@ -48,6 +49,8 @@ typedef struct OMXContext {
     OMX_ERRORTYPE (*ptr_FreeHandle)(OMX_HANDLETYPE);
     OMX_ERRORTYPE (*ptr_GetComponentsOfRole)(OMX_STRING, OMX_U32*, OMX_U8**);
     OMX_ERRORTYPE (*ptr_GetRolesOfComponent)(OMX_STRING, OMX_U32*, OMX_U8**);
+    void (*host_init)(void);
+    void (*host_deinit)(void);
 } OMXContext;
 
 static OMXContext *omx_context;
@@ -59,9 +62,24 @@ static av_cold void *dlsym2(void *handle, const char *symbol, const char *prefix
     return dlsym(handle, buf);
 }
 
-static av_cold int omx_try_load(void *logctx, const char *libname, const char *prefix)
+static av_cold int omx_try_load(void *logctx, const char *libname, const char *prefix, const char *libname2)
 {
     OMXContext *s = omx_context;
+    if (libname2) {
+        s->lib2 = dlopen(libname2, RTLD_NOW | RTLD_GLOBAL);
+        if (!s->lib2) {
+            av_log(logctx, AV_LOG_WARNING, "%s not found\n", libname);
+            return AVERROR_ENCODER_NOT_FOUND;
+        }
+        s->host_init = dlsym(s->lib2, "bcm_host_init");
+        s->host_deinit = dlsym(s->lib2, "bcm_host_deinit");
+        if (!s->host_init || !s->host_deinit) {
+            av_log(logctx, AV_LOG_WARNING, "bcm_host_(de)init not found\n");
+            dlclose(s->lib2);
+            s->lib2 = NULL;
+            return AVERROR_ENCODER_NOT_FOUND;
+        }
+    }
     s->lib = dlopen(libname, RTLD_NOW | RTLD_GLOBAL);
     if (!s->lib) {
         av_log(logctx, AV_LOG_WARNING, "%s not found\n", libname);
@@ -80,6 +98,9 @@ static av_cold int omx_try_load(void *logctx, const char *libname, const char *p
         av_log(logctx, AV_LOG_WARNING, "Not all functions found in %s\n", libname);
         dlclose(s->lib);
         s->lib = NULL;
+        if (s->lib2)
+            dlclose(s->lib2);
+        s->lib2 = NULL;
         return AVERROR_ENCODER_NOT_FOUND;
     }
     return 0;
@@ -87,9 +108,10 @@ static av_cold int omx_try_load(void *logctx, const char *libname, const char *p
 
 static av_cold int omx_init(void *logctx, const char *libname, const char *prefix) {
     static const char * const libnames[] = {
-        "libOMX_Core.so",
-        "libOmxCore.so",
-        "libomxil-bellagio.so",
+        "/opt/vc/lib/libopenmaxil.so", "/opt/vc/lib/libbcm_host.so",
+        "libOMX_Core.so", NULL,
+        "libOmxCore.so", NULL,
+        "libomxil-bellagio.so", NULL,
         NULL
     };
     const char* const* nameptr;
@@ -103,17 +125,19 @@ static av_cold int omx_init(void *logctx, const char *libname, const char *prefi
     omx_context = av_mallocz(sizeof(*omx_context));
     omx_context->users = 1;
     if (libname) {
-        ret = omx_try_load(logctx, libname, prefix);
+        ret = omx_try_load(logctx, libname, prefix, NULL);
         if (ret < 0)
             return ret;
     } else {
-        for (nameptr = libnames; *nameptr; nameptr++)
-            if (!(ret = omx_try_load(logctx, *nameptr, prefix)))
+        for (nameptr = libnames; *nameptr; nameptr += 2)
+            if (!(ret = omx_try_load(logctx, nameptr[0], prefix, nameptr[1])))
                 break;
         if (!*nameptr)
             return ret;
     }
 
+    if (omx_context->host_init)
+        omx_context->host_init();
     omx_context->ptr_Init();
     return 0;
 }
@@ -125,6 +149,10 @@ static av_cold void omx_deinit(void) {
     if (!omx_context->users) {
         omx_context->ptr_Deinit();
         dlclose(omx_context->lib);
+        if (omx_context->host_deinit)
+            omx_context->host_deinit();
+        if (omx_context->lib2)
+            dlclose(omx_context->lib2);
         av_freep(&omx_context);
     }
 }
