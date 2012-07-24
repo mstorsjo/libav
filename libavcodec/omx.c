@@ -151,8 +151,8 @@ static av_cold void omx_deinit(void) {
         dlclose(omx_context->lib);
         if (omx_context->host_deinit)
             omx_context->host_deinit();
-        if (omx_context->lib2)
-            dlclose(omx_context->lib2);
+//        if (omx_context->lib2)
+//            dlclose(omx_context->lib2);
         av_freep(&omx_context);
     }
 }
