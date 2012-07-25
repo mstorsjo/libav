@@ -380,6 +380,8 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
 
     s->version.s.nVersionMajor = 1;
     s->version.s.nVersionMinor = 1; // Required by Bellagio, set to 0 for other uses
+    if (av_strstart(s->component_name, "OMX.broadcom.", NULL))
+        s->version.s.nRevision = 2;
 #define INIT_STRUCT(x) do { x.nSize = sizeof(x); x.nVersion = s->version; } while (0)
 
     err = omx_context->ptr_GetHandle(&s->handle, s->component_name, s, (OMX_CALLBACKTYPE*) &callbacks);
