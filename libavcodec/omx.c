@@ -34,6 +34,7 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <sys/time.h>
+#include "h264.h"
 
 #define OMX_QCOM_COLOR_FormatYVU420SemiPlanar 0x7FA30C00
 #define OMX_TI_COLOR_FormatYUV420PackedSemiPlanar 0x7F000100
@@ -683,7 +684,7 @@ static av_cold int omx_encode_init(AVCodecContext *avctx)
         goto fail;
 
 #ifdef OMX_BUFFERFLAG_CODECCONFIG
-    if (av_strstart(s->component_name, "OMX.qcom.video.encoder", NULL) && avctx->flags & CODEC_FLAG_GLOBAL_HEADER) {
+    if ((av_strstart(s->component_name, "OMX.qcom.video.encoder", NULL) || av_strstart(s->component_name, "OMX.broadcom.video_encode", NULL)) && avctx->flags & CODEC_FLAG_GLOBAL_HEADER) {
 retry:
         pthread_mutex_lock(&s->output_mutex);
         while (!s->num_done_out_buffers)
@@ -698,9 +699,16 @@ retry:
             avctx->extradata_size += buffer->nFilledLen;
             memset(avctx->extradata + avctx->extradata_size, 0, FF_INPUT_BUFFER_PADDING_SIZE);
         }
-        if (!(buffer->nFlags & OMX_BUFFERFLAG_CODECCONFIG)) {
-            OMX_FillThisBuffer(s->handle, buffer);
-            goto retry;
+        if (av_strstart(s->component_name, "OMX.broadcom.video_encode", NULL) && avctx->codec->id == AV_CODEC_ID_H264) {
+            if (buffer->pBuffer[buffer->nOffset + 4] & 0x1f != NAL_PPS) {
+                OMX_FillThisBuffer(s->handle, buffer);
+                goto retry;
+            }
+        } else {
+            if (!(buffer->nFlags & OMX_BUFFERFLAG_CODECCONFIG)) {
+                OMX_FillThisBuffer(s->handle, buffer);
+                goto retry;
+            }
         }
         OMX_FillThisBuffer(s->handle, buffer);
     }
