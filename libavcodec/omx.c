@@ -448,6 +448,10 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
         in_port_params.format.video.eColorFormat = s->color_format;
         s->stride = avctx->width;
         s->plane_size = avctx->height;
+        if (!strcmp(s->component_name, "OMX.broadcom.video_encode")) {
+            s->stride = FFALIGN(s->stride, 16);
+            s->plane_size = FFALIGN(s->plane_size, 16);
+        }
         in_port_params.format.video.nStride = s->stride;
         in_port_params.format.video.nSliceHeight = s->plane_size;
     } else {
