@@ -546,6 +546,8 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
             in_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingMPEG4;
         else if (avctx->codec->id == AV_CODEC_ID_H264)
             in_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingAVC;
+        else if (avctx->codec->id == AV_CODEC_ID_VC1)
+            in_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingWMV;
         in_port_params.format.video.nStride = -1;
         in_port_params.format.video.nSliceHeight = -1;
         in_port_params.format.video.xFramerate = 30 << 16;
@@ -1047,6 +1049,9 @@ static av_cold int omx_decode_init(AVCodecContext *avctx)
     case AV_CODEC_ID_H264:
         role = "video_decoder.avc";
         break;
+    case AV_CODEC_ID_VC1:
+        role = "video_decoder.vc1";
+        break;
     default:
         return AVERROR(ENOSYS);
     }
@@ -1346,4 +1351,24 @@ AVCodec ff_mpeg4_omx_decoder = {
     .capabilities     = AV_CODEC_CAP_DELAY,
     .caps_internal    = FF_CODEC_CAP_SETS_PKT_DTS | FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
     .priv_class       = &omx_mpeg4dec_class,
+};
+
+static const AVClass omx_vc1dec_class = {
+    .class_name = "vc1_omx_dec",
+    .item_name  = av_default_item_name,
+    .option     = options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
+AVCodec ff_vc1_omx_decoder = {
+    .name             = "vc1_omx",
+    .long_name        = NULL_IF_CONFIG_SMALL("OpenMAX IL VC1 video decoder"),
+    .type             = AVMEDIA_TYPE_VIDEO,
+    .id               = AV_CODEC_ID_VC1,
+    .priv_data_size   = sizeof(OMXCodecContext),
+    .init             = omx_decode_init,
+    .decode           = omx_decode_frame,
+    .close            = omx_decode_end,
+    .capabilities     = AV_CODEC_CAP_DELAY,
+    .caps_internal    = FF_CODEC_CAP_SETS_PKT_DTS | FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .priv_class       = &omx_vc1dec_class,
 };
