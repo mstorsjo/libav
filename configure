@@ -2226,6 +2226,7 @@ vp8_vaapi_hwaccel_deps="vaapi VAPictureParameterBufferVP8"
 vp8_vaapi_hwaccel_select="vp8_decoder"
 wmv3_d3d11va_hwaccel_select="vc1_d3d11va_hwaccel"
 wmv3_dxva2_hwaccel_select="vc1_dxva2_hwaccel"
+wmv3_omx_decoder_deps="omx"
 wmv3_vaapi_hwaccel_select="vc1_vaapi_hwaccel"
 wmv3_vdpau_hwaccel_select="vc1_vdpau_hwaccel"
 
