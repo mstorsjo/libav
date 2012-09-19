@@ -459,7 +459,7 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
             in_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingMPEG4;
         else if (avctx->codec->id == AV_CODEC_ID_H264)
             in_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingAVC;
-        else if (avctx->codec->id == AV_CODEC_ID_VC1)
+        else if (avctx->codec->id == AV_CODEC_ID_VC1 || avctx->codec->id == AV_CODEC_ID_WMV3)
             in_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingWMV;
     }
     in_port_params.format.video.nFrameWidth = avctx->width;
@@ -927,6 +927,7 @@ static av_cold int omx_decode_init(AVCodecContext *avctx)
         role = "video_decoder.avc";
         break;
     case AV_CODEC_ID_VC1:
+    case AV_CODEC_ID_WMV3:
         role = "video_decoder.vc1";
         break;
     default:
@@ -1295,5 +1296,27 @@ AVCodec ff_omx_vc1_decoder = {
     .long_name      = NULL_IF_CONFIG_SMALL("OpenMAX VC1 video decoder"),
     .capabilities   = CODEC_CAP_DELAY,
     .priv_class     = &omx_vc1dec_class,
+};
+#endif
+
+#if CONFIG_OMX_WMV3_DECODER
+static const AVClass omx_wmv3dec_class = {
+    .class_name = "OpenMAX WMV3 decoder",
+    .item_name  = av_default_item_name,
+    .option     = options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
+AVCodec ff_omx_wmv3_decoder = {
+    .name           = "omx_wmv3",
+    .type           = AVMEDIA_TYPE_VIDEO,
+    .id             = AV_CODEC_ID_WMV3,
+    .priv_data_size = sizeof(OMXCodecContext),
+    .init           = omx_decode_init,
+    .decode         = omx_decode_frame,
+    .close          = omx_decode_end,
+    .pix_fmts       = (const enum AVPixelFormat[]){AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE},
+    .long_name      = NULL_IF_CONFIG_SMALL("OpenMAX WMV3 video decoder"),
+    .capabilities   = CODEC_CAP_DELAY,
+    .priv_class     = &omx_wmv3dec_class,
 };
 #endif

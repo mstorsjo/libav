@@ -2118,6 +2118,7 @@ omx_h264_encoder_deps="omx dlopen"
 omx_mpeg4_decoder_deps="omx dlopen"
 omx_mpeg4_encoder_deps="omx dlopen"
 omx_vc1_decoder_deps="omx dlopen"
+omx_wmv3_decoder_deps="omx dlopen"
 
 # demuxers / muxers
 ac3_demuxer_select="ac3_parser"

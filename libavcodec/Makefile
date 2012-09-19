@@ -680,6 +680,7 @@ OBJS-$(CONFIG_OMX_H264_ENCODER)           += omx.o
 OBJS-$(CONFIG_OMX_MPEG4_DECODER)          += omx.o
 OBJS-$(CONFIG_OMX_MPEG4_ENCODER)          += omx.o
 OBJS-$(CONFIG_OMX_VC1_DECODER)            += omx.o
+OBJS-$(CONFIG_OMX_WMV3_DECODER)           += omx.o
 
 # parsers
 OBJS-$(CONFIG_AAC_PARSER)              += aac_parser.o aac_ac3_parser.o \
