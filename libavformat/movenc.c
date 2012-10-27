@@ -59,6 +59,7 @@ static const AVOption options[] = {
     { "min_frag_duration", "Minimum fragment duration", offsetof(MOVMuxContext, min_fragment_duration), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
     { "frag_size", "Maximum fragment size", offsetof(MOVMuxContext, max_fragment_size), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
     { "ism_lookahead", "Number of lookahead entries for ISM files", offsetof(MOVMuxContext, ism_lookahead), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
+    { "ism_offset", "Offset to the ISM fragment start times", offsetof(MOVMuxContext, ism_offset), AV_OPT_TYPE_INT64, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
     { NULL },
 };
 
@@ -3078,6 +3079,7 @@ static int mov_write_header(AVFormatContext *s)
          * this is updated. */
         track->hint_track = -1;
         track->start_dts = AV_NOPTS_VALUE;
+        track->frag_start += mov->ism_offset;
         if(st->codec->codec_type == AVMEDIA_TYPE_VIDEO){
             if (track->tag == MKTAG('m','x','3','p') || track->tag == MKTAG('m','x','3','n') ||
                 track->tag == MKTAG('m','x','4','p') || track->tag == MKTAG('m','x','4','n') ||
