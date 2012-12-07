@@ -676,6 +676,10 @@ static void enqueue_packet(RTPDemuxContext *s, uint8_t *buf, int len)
         int16_t diff = seq - (*cur)->seq;
         if (diff < 0)
             break;
+        if (diff == 0) {
+            av_free(buf);
+            return; // Duplicate packet, ignore
+        }
         cur = &(*cur)->next;
     }
 
@@ -780,7 +784,10 @@ static int rtp_parse_one_packet(RTPDemuxContext *s, AVPacket *pkt,
             av_log(s->st ? s->st->codec : NULL, AV_LOG_WARNING,
                    "RTP: dropping old packet received too late\n");
             return -1;
-        } else if (diff <= 1) {
+        } else if (diff == 0) {
+            /* The last packet received again, ignore */
+            return -1;
+        } else if (diff == 1) {
             /* Correct packet */
             rv = rtp_parse_packet_internal(s, pkt, buf, len);
             return rv;
