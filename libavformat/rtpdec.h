@@ -42,6 +42,7 @@ typedef struct RTPDynamicProtocolHandler RTPDynamicProtocolHandler;
 typedef struct RTPDemuxContext RTPDemuxContext;
 RTPDemuxContext *ff_rtp_parse_open(AVFormatContext *s1, AVStream *st,
                                    int payload_type, int queue_size);
+int ff_rtp_parse_add_pt(RTPDemuxContext *s, int pt, const char *name);
 void ff_rtp_parse_set_dynamic_protocol(RTPDemuxContext *s, PayloadContext *ctx,
                                        RTPDynamicProtocolHandler *handler);
 void ff_rtp_parse_set_crypto(RTPDemuxContext *s, const char *suite,
@@ -148,6 +149,7 @@ struct RTPDemuxContext {
     AVFormatContext *ic;
     AVStream *st;
     int payload_type;
+    int red_pt, ulpfec_pt;
     uint32_t ssrc;
     uint16_t seq;
     uint32_t timestamp;

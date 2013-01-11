@@ -517,6 +517,19 @@ RTPDemuxContext *ff_rtp_parse_open(AVFormatContext *s1, AVStream *st,
     return s;
 }
 
+int ff_rtp_parse_add_pt(RTPDemuxContext *s, int pt, const char *name)
+{
+    if (!strcmp(name, "red")) {
+        s->red_pt = pt;
+        return 0;
+    } else if (!strcmp(name, "ulpfec")) {
+        s->ulpfec_pt = pt;
+        return 0;
+    } else {
+        return -1;
+    }
+}
+
 void ff_rtp_parse_set_dynamic_protocol(RTPDemuxContext *s, PayloadContext *ctx,
                                        RTPDynamicProtocolHandler *handler)
 {
@@ -568,6 +581,124 @@ static void finalize_packet(RTPDemuxContext *s, AVPacket *pkt, uint32_t timestam
     s->timestamp = timestamp;
     pkt->pts     = s->unwrapped_timestamp + s->range_start_offset -
                    s->base_timestamp;
+}
+
+static int rtp_parse_one_packet(RTPDemuxContext *s, AVPacket *pkt,
+                                uint8_t **bufptr, int len, int external);
+
+static int rtp_parse_red(RTPDemuxContext *s, AVPacket *pkt,
+                         const uint8_t *buf, int len)
+{
+    unsigned int ssrc;
+    int payload_type, seq;
+    int ext, header_len, ret = -1;
+    uint32_t timestamp;
+    int packet_buf_len = 1500;
+    uint8_t *packet_buf = NULL;
+    const uint8_t *orig_buf = buf;
+    const uint8_t *red_headers;
+
+    ext          = buf[0] & 0x10;
+    payload_type = buf[1] & 0x7f;
+    seq       = AV_RB16(buf + 2);
+    timestamp = AV_RB32(buf + 4);
+    ssrc      = AV_RB32(buf + 8);
+    s->ssrc = ssrc;
+
+    if (buf[0] & 0x20) {
+        int padding = buf[len - 1];
+        if (len >= 12 + padding)
+            len -= padding;
+    }
+
+    len -= 12;
+    buf += 12;
+
+    /* RFC 3550 Section 5.3.1 RTP Header Extension handling */
+    if (ext) {
+        if (len < 4)
+            return -1;
+        /* calculate the header extension length (stored as number
+         * of 32-bit words) */
+        ext = (AV_RB16(buf + 2) + 1) << 2;
+
+        if (len < ext)
+            return -1;
+        // skip past RTP header extension
+        len -= ext;
+        buf += ext;
+    }
+
+    header_len = buf - orig_buf;
+    if (header_len > packet_buf_len) {
+        av_log(NULL, AV_LOG_WARNING, "red packet header too long, %d bytes\n", header_len);
+        return -1;
+    }
+
+    red_headers = buf;
+    while (len > 0) {
+        if (buf[0] & 0x80) {
+            if (len < 4)
+                return -1;
+            buf += 4;
+            len -= 4;
+        } else {
+            buf++;
+            len--;
+            break;
+        }
+    }
+
+    while (red_headers + 1 <= buf + len) {
+        int block_pt = red_headers[0] & 0x7f;
+        int last = !(red_headers[0] & 0x80);
+        int block_len = len;
+        uint32_t block_ts = timestamp;
+        if (!last) {
+            int ts_offset = 0;
+            if (red_headers + 4 > buf + len)
+                goto fail;
+            block_len = AV_RB16(&red_headers[2]) & 0x3ff;
+            ts_offset = AV_RB16(&red_headers[1]) >> 2;
+            block_ts += ts_offset;
+            av_log(NULL, AV_LOG_WARNING, "red %d bytes pt %d, offset %d, last %d\n", block_len, block_pt, ts_offset, last);
+            red_headers += 4;
+        } else {
+            red_headers += 1;
+        }
+        if (len < block_len) {
+            av_log(NULL, AV_LOG_WARNING, "red %d bytes left, block %d bytes\n", len, block_len);
+            goto fail;
+        }
+        if (!packet_buf) {
+            packet_buf = av_malloc(packet_buf_len);
+            if (!packet_buf)
+                return AVERROR(ENOMEM);
+        }
+        memcpy(packet_buf, orig_buf, header_len);
+        packet_buf[0] &= ~0x20; // Clear the padding bit
+        packet_buf[1] = block_pt; // new PT, no marker
+        // Pass the marker through for the last payload
+        if (last)
+            packet_buf[1] |= orig_buf[1] & 0x80;
+        AV_WB32(packet_buf + 4, block_ts);
+        if (header_len + block_len > packet_buf_len) {
+            av_log(NULL, AV_LOG_WARNING, "red %d + %d bytes too big for buffer\n", header_len, block_len);
+            continue;
+        }
+        memcpy(packet_buf + header_len, buf, block_len);
+        ret = rtp_parse_one_packet(s, pkt, &packet_buf, header_len + block_len, 0);
+        buf += block_len;
+        len -= block_len;
+        if (last)
+            break;
+    }
+
+    av_free(packet_buf);
+    return ret;
+fail:
+    av_free(packet_buf);
+    return -1;
 }
 
 static int rtp_parse_packet_internal(RTPDemuxContext *s, AVPacket *pkt,
@@ -728,12 +859,13 @@ static int rtp_parse_queued_packet(RTPDemuxContext *s, AVPacket *pkt)
 }
 
 static int rtp_parse_one_packet(RTPDemuxContext *s, AVPacket *pkt,
-                                uint8_t **bufptr, int len)
+                                uint8_t **bufptr, int len, int external)
 {
     uint8_t *buf = bufptr ? *bufptr : NULL;
     int flags = 0;
     uint32_t timestamp;
     int rv = 0;
+    int payload_type;
 
     if (!buf) {
         /* If parsing of the previous packet actually returned 0 or an error,
@@ -763,7 +895,7 @@ static int rtp_parse_one_packet(RTPDemuxContext *s, AVPacket *pkt,
         return rtcp_parse_packet(s, buf, len);
     }
 
-    if (s->st) {
+    if (s->st && external) {
         int64_t received = av_gettime();
         uint32_t arrival_ts = av_rescale_q(received, AV_TIME_BASE_Q,
                                            s->st->time_base);
@@ -771,6 +903,18 @@ static int rtp_parse_one_packet(RTPDemuxContext *s, AVPacket *pkt,
         // Calculate the jitter immediately, before queueing the packet
         // into the reordering queue.
         rtcp_update_jitter(&s->statistics, timestamp, arrival_ts);
+    }
+
+    payload_type = buf[1] & 0x7f;
+    if (payload_type != s->payload_type) {
+        if (s->red_pt && payload_type == s->red_pt) {
+            return rtp_parse_red(s, pkt, buf, len);
+        } else if (s->ulpfec_pt && payload_type == s->ulpfec_pt) {
+            av_log(NULL, AV_LOG_WARNING, "got %d bytes ulpfec packet\n", len);
+        } else {
+            av_log(NULL, AV_LOG_WARNING, "got %d bytes other packet pt %d\n", len, payload_type);
+        }
+        return -1;
     }
 
     if ((s->seq == 0 && !s->queue) || s->queue_size <= 1) {
@@ -819,7 +963,7 @@ int ff_rtp_parse_packet(RTPDemuxContext *s, AVPacket *pkt,
     int rv;
     if (s->srtp_enabled && bufptr && ff_srtp_decrypt(&s->srtp, *bufptr, &len) < 0)
         return -1;
-    rv = rtp_parse_one_packet(s, pkt, bufptr, len);
+    rv = rtp_parse_one_packet(s, pkt, bufptr, len, 1);
     s->prev_ret = rv;
     while (rv == AVERROR(EAGAIN) && has_next_packet(s))
         rv = rtp_parse_queued_packet(s, pkt);
