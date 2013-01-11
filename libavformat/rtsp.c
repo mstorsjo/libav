@@ -206,6 +206,18 @@ static int sdp_parse_rtpmap(AVFormatContext *s,
      * particular servers ("RealServer Version 6.1.3.970", see issue 1658)
      * have a trailing space. */
     get_word_sep(buf, sizeof(buf), "/ ", &p);
+
+    if (payload_type != rtsp_st->sdp_payload_type) {
+        for (i = 0; i < rtsp_st->nb_extra_payload_types; i++) {
+            if (rtsp_st->extra_payload_types[i].payload_type == payload_type) {
+                av_strlcpy(rtsp_st->extra_payload_types[i].name, buf,
+                           sizeof(rtsp_st->extra_payload_types[i].name));
+                return 0;
+            }
+        }
+        return 0;
+    }
+
     if (payload_type < RTP_PT_PRIVATE) {
         /* We are in a standard case
          * (from http://www.iana.org/assignments/rtp-parameters). */
@@ -409,6 +421,15 @@ static void sdp_parse_line(AVFormatContext *s, SDPParseState *s1,
         /* XXX: handle list of formats */
         get_word(buf1, sizeof(buf1), &p); /* format list */
         rtsp_st->sdp_payload_type = atoi(buf1);
+
+        while (1) {
+            get_word(buf1, sizeof(buf1), &p);
+            if (!buf1[0])
+                break;
+            rtsp_st->extra_payload_types[rtsp_st->nb_extra_payload_types++].payload_type = atoi(buf1);
+            if (rtsp_st->nb_extra_payload_types >= FF_ARRAY_ELEMS(rtsp_st->extra_payload_types))
+                break;
+        }
 
         if (!strcmp(ff_rtp_enc_name(rtsp_st->sdp_payload_type), "MP2T")) {
             /* no corresponding stream */
@@ -736,14 +757,27 @@ int ff_rtsp_open_transport_ctx(AVFormatContext *s, RTSPStream *rtsp_st)
             return ret;
     } else if (rt->transport == RTSP_TRANSPORT_RAW) {
         return 0; // Don't need to open any parser here
-    } else if (rt->transport == RTSP_TRANSPORT_RDT && CONFIG_RTPDEC)
+    } else if (rt->transport == RTSP_TRANSPORT_RDT && CONFIG_RTPDEC) {
         rtsp_st->transport_priv = ff_rdt_parse_open(s, st->index,
                                             rtsp_st->dynamic_protocol_context,
                                             rtsp_st->dynamic_handler);
-    else if (CONFIG_RTPDEC)
+    } else if (CONFIG_RTPDEC) {
+        int i;
         rtsp_st->transport_priv = ff_rtp_parse_open(s, st,
                                          rtsp_st->sdp_payload_type,
                                          reordering_queue_size);
+        for (i = 0; i < rtsp_st->nb_extra_payload_types; i++) {
+            if (ff_rtp_parse_add_pt(rtsp_st->transport_priv,
+                                    rtsp_st->extra_payload_types[i].payload_type,
+                                    rtsp_st->extra_payload_types[i].name)) {
+                // This extra PT was not accepted
+                memmove(&rtsp_st->extra_payload_types[i],
+                        &rtsp_st->extra_payload_types[i + 1],
+                        rtsp_st->nb_extra_payload_types - i - 1);
+                rtsp_st->nb_extra_payload_types--;
+            }
+        }
+    }
 
     if (!rtsp_st->transport_priv) {
          return AVERROR(ENOMEM);
@@ -1922,9 +1956,16 @@ static int pick_stream(AVFormatContext *s, RTSPStream **rtsp_st,
             }
         } else {
             for (i = 0; i < rt->nb_rtsp_streams; i++) {
+                int j;
                 if ((buf[1] & 0x7f) == rt->rtsp_streams[i]->sdp_payload_type) {
                     *rtsp_st = rt->rtsp_streams[i];
                     return len;
+                }
+                for (j = 0; j < rt->rtsp_streams[i]->nb_extra_payload_types; j++) {
+                    if ((buf[1] & 0x7f) == rt->rtsp_streams[i]->extra_payload_types[j].payload_type) {
+                        *rtsp_st = rt->rtsp_streams[i];
+                        return len;
+                    }
                 }
             }
         }

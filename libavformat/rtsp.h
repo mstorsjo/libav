@@ -437,6 +437,11 @@ typedef struct RTSPStream {
     struct RTSPSource **exclude_source_addrs; /**< Source-specific multicast exclude source IP addresses (from SDP content) */
     int sdp_ttl;              /**< IP Time-To-Live (from SDP content) */
     int sdp_payload_type;     /**< payload type */
+    int nb_extra_payload_types;
+    struct {
+        int payload_type;
+        char name[15];
+    } extra_payload_types[10];
     //@}
 
     /** The following are used for dynamic protocols (rtpdec_*.c/rdt.c) */
