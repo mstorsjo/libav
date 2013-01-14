@@ -722,10 +722,6 @@ static int rtp_parse_packet_internal(RTPDemuxContext *s, AVPacket *pkt,
     /* store the ssrc in the RTPDemuxContext */
     s->ssrc = ssrc;
 
-    /* NOTE: we can handle only one payload type */
-    if (s->payload_type != payload_type)
-        return -1;
-
     st = s->st;
     // only do something with this if all the rtp checks pass...
     if (!rtp_valid_packet_in_sequence(&s->statistics, seq)) {
@@ -749,6 +745,10 @@ static int rtp_parse_packet_internal(RTPDemuxContext *s, AVPacket *pkt,
     buf   += 4 * csrc;
     if (len < 0)
         return AVERROR_INVALIDDATA;
+
+    /* NOTE: we can handle only one payload type */
+    if (s->payload_type != payload_type)
+        return -1;
 
     /* RFC 3550 Section 5.3.1 RTP Header Extension handling */
     if (ext) {
