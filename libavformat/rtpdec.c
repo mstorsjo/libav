@@ -723,13 +723,6 @@ static int rtp_parse_packet_internal(RTPDemuxContext *s, AVPacket *pkt,
     s->ssrc = ssrc;
 
     st = s->st;
-    // only do something with this if all the rtp checks pass...
-    if (!rtp_valid_packet_in_sequence(&s->statistics, seq)) {
-        av_log(st ? st->codec : NULL, AV_LOG_ERROR,
-               "RTP: PT=%02x: bad cseq %04x expected=%04x\n",
-               payload_type, seq, ((s->seq + 1) & 0xffff));
-        return -1;
-    }
 
     if (buf[0] & 0x20) {
         int padding = buf[len - 1];
@@ -863,6 +856,7 @@ static int rtp_parse_one_packet(RTPDemuxContext *s, AVPacket *pkt,
 {
     uint8_t *buf = bufptr ? *bufptr : NULL;
     int flags = 0;
+    uint16_t seq;
     uint32_t timestamp;
     int rv = 0;
     int payload_type;
@@ -895,6 +889,16 @@ static int rtp_parse_one_packet(RTPDemuxContext *s, AVPacket *pkt,
         return rtcp_parse_packet(s, buf, len);
     }
 
+    seq = AV_RB16(&buf[2]);
+    payload_type = buf[1] & 0x7f;
+    // Count the packets as received, but only the externally provided ones
+    if (external && !rtp_valid_packet_in_sequence(&s->statistics, seq)) {
+        av_log(s->st ? s->st->codec : NULL, AV_LOG_ERROR,
+               "RTP: PT=%02x: bad cseq %04x expected=%04x\n",
+               payload_type, seq, ((s->seq + 1) & 0xffff));
+        return -1;
+    }
+
     if (s->st && external) {
         int64_t received = av_gettime();
         uint32_t arrival_ts = av_rescale_q(received, AV_TIME_BASE_Q,
@@ -905,7 +909,6 @@ static int rtp_parse_one_packet(RTPDemuxContext *s, AVPacket *pkt,
         rtcp_update_jitter(&s->statistics, timestamp, arrival_ts);
     }
 
-    payload_type = buf[1] & 0x7f;
     if (payload_type != s->payload_type) {
         if (s->red_pt && payload_type == s->red_pt) {
             return rtp_parse_red(s, pkt, buf, len);
