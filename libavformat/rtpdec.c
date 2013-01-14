@@ -499,6 +499,8 @@ RTPDemuxContext *ff_rtp_parse_open(AVFormatContext *s1, AVStream *st,
     s->ic                  = s1;
     s->st                  = st;
     s->queue_size          = queue_size;
+    s->last_packet         = &s->prev_packets;
+    s->last_unused_fec     = &s->unused_fec;
     rtp_init_statistics(&s->statistics, 0);
     if (st) {
         switch (st->codec->codec_id) {
@@ -585,6 +587,190 @@ static void finalize_packet(RTPDemuxContext *s, AVPacket *pkt, uint32_t timestam
 
 static int rtp_parse_one_packet(RTPDemuxContext *s, AVPacket *pkt,
                                 uint8_t **bufptr, int len, int external);
+
+static RTPPacket *get_packet_from_queue(RTPPacket *pkt, uint16_t seq)
+{
+    int16_t diff;
+    if (!pkt)
+        return NULL;
+    diff = seq - pkt->seq;
+    if (diff < 0) // Looking for a packet prior to the first queued ones, we don't have it
+        return NULL;
+    while (pkt) {
+        if (pkt->seq == seq)
+            return pkt;
+        pkt = pkt->next;
+    }
+    return NULL;
+}
+
+static RTPPacket *get_old_packet(RTPDemuxContext *s, uint16_t seq)
+{
+    return get_packet_from_queue(s->prev_packets, seq);
+}
+
+static RTPPacket *get_queued_packet(RTPDemuxContext *s, uint16_t seq)
+{
+    return get_packet_from_queue(s->queue, seq);
+}
+
+static void enqueue_packet(RTPDemuxContext *s, uint8_t *buf, int len);
+
+static int rtp_parse_ulpfec(RTPDemuxContext *s,
+                            const uint8_t *buf, int len, int *missing)
+{
+    unsigned int ssrc;
+    int payload_type, seq;
+    int ext;
+    uint32_t timestamp;
+    int level_header_len, level;
+    uint16_t seq_base;
+    const uint8_t *fec_header;
+
+    ext          = buf[0] & 0x10;
+    payload_type = buf[1] & 0x7f;
+    seq       = AV_RB16(buf + 2);
+    timestamp = AV_RB32(buf + 4);
+    ssrc      = AV_RB32(buf + 8);
+    s->ssrc = ssrc;
+
+    if (buf[0] & 0x20) {
+        int padding = buf[len - 1];
+        if (len >= 12 + padding)
+            len -= padding;
+    }
+
+    len -= 12;
+    buf += 12;
+
+    /* RFC 3550 Section 5.3.1 RTP Header Extension handling */
+    if (ext) {
+        if (len < 4)
+            return -1;
+        /* calculate the header extension length (stored as number
+         * of 32-bit words) */
+        ext = (AV_RB16(buf + 2) + 1) << 2;
+
+        if (len < ext)
+            return -1;
+        // skip past RTP header extension
+        len -= ext;
+        buf += ext;
+    }
+
+    if (len < 10)
+        return -1;
+    fec_header = buf;
+    level_header_len = (buf[0] & 0x40) ? 8 : 4;
+    seq_base = AV_RB16(&buf[2]);
+    buf += 10;
+    len -= 10;
+    level = 0;
+
+    while (len > 0) {
+        uint16_t level_len;
+        uint64_t mask;
+        int mask_bits = level_header_len == 4 ? 16 : 48;
+        int i;
+        int nb_protected = 0;
+        int nb_have = 0, nb_missing = 0, nb_missing_new = 0;
+        uint16_t missing_seq = s->seq;
+        int16_t missing_diff;
+        if (len < level_header_len)
+            return -1;
+        level_len = AV_RB16(&buf[0]);
+        mask = AV_RB16(&buf[2]);
+        if (level_header_len == 8)
+            mask = (mask << 32) | AV_RB32(&buf[4]);
+//        av_log(NULL, AV_LOG_WARNING, "got FEC packet %d:", seq);
+        for (i = 0; i < mask_bits; i++) {
+            if ((mask >> (mask_bits - i - 1)) & 1) {
+                uint16_t this_seq = seq_base + i;
+                nb_protected++;
+                if (get_old_packet(s, this_seq) || get_queued_packet(s, this_seq)) {
+                    nb_have++;
+//                    av_log(NULL, AV_LOG_WARNING, " %d(1)", this_seq);
+                } else {
+                    nb_missing++;
+                    missing_seq = this_seq;
+                    missing_diff = missing_seq - s->seq;
+                    if (missing_diff > 0)
+                        nb_missing_new++;
+//                    av_log(NULL, AV_LOG_WARNING, " %d(0)", this_seq);
+                }
+            }
+        }
+//        av_log(NULL, AV_LOG_WARNING, ", missing %d\n", nb_missing);
+        if (nb_missing > 0 && nb_missing_new == 0) {
+            // Missing packets, but none of them are of any use, so drop this one
+            return -1;
+        }
+
+        if (nb_missing == 1 && missing_diff > 0) {
+            int out_len = 12 + level_len;
+            uint8_t *out = av_malloc(out_len);
+            uint16_t pkt_len = AV_RB16(&fec_header[8]);
+            if (!out)
+                return -1;
+            memcpy(out, fec_header, 8);
+            memcpy(&out[12], &buf[level_header_len], level_len);
+            for (i = 0; i < mask_bits; i++) {
+                if ((mask >> (mask_bits - i - 1)) & 1) {
+                    uint16_t this_seq = seq_base + i;
+                    RTPPacket *pkt = get_old_packet(s, this_seq);
+                    int j;
+                    if (!pkt)
+                        pkt = get_queued_packet(s, this_seq);
+                    if (!pkt)
+                        continue;
+                    pkt_len ^= pkt->len - 12;
+                    for (j = 0; j < pkt->len; j++)
+                        out[j] ^= pkt->buf[j];
+                }
+            }
+            out[0] = (RTP_VERSION << 6) | (out[0] & 0x3f);
+            AV_WB16(&out[2], missing_seq);
+            AV_WB32(&out[8], ssrc);
+            if (pkt_len > level_len) {
+                av_log(NULL, AV_LOG_WARNING, "only got %d/%d bytes of packet %d via FEC, not enqueueing\n", level_len, pkt_len, missing_seq);
+                av_free(out);
+                return -1;
+            }
+            out_len = 12 + pkt_len;
+            av_log(NULL, AV_LOG_WARNING, "recreated %d byte packet %d from %d bytes via FEC\n", pkt_len, missing_seq, level_len);
+            enqueue_packet(s, out, out_len);
+        }
+        *missing = nb_missing;
+        return 0; // We only handle level0 at the moment
+        buf += level_header_len + level_len;
+        len -= level_header_len + level_len;
+        level++;
+    }
+
+    return -1;
+}
+
+static void recheck_fec(RTPDemuxContext *s)
+{
+    RTPPacket **cur = &s->unused_fec;
+    while (*cur) {
+        RTPPacket *pkt = *cur;
+        int missing;
+        int ret = rtp_parse_ulpfec(s, pkt->buf, pkt->len, &missing);
+//        av_log(NULL, AV_LOG_WARNING, "recheck fec, ret %d, %d bytes, now missing %d, prev %d, fec queue %d\n", ret, pkt->len, missing, pkt->nb_missing_prev, s->unused_fec_len);
+        if (ret < 0 || missing > pkt->nb_missing_prev || missing <= 1) {
+            *cur = pkt->next;
+            if (!pkt->next)
+                s->last_unused_fec = cur;
+            av_free(pkt->buf);
+            av_free(pkt);
+            s->unused_fec_len--;
+        } else {
+            pkt->nb_missing_prev = missing;
+            cur = &pkt->next;
+        }
+    }
+}
 
 static int rtp_parse_red(RTPDemuxContext *s, AVPacket *pkt,
                          const uint8_t *buf, int len)
@@ -777,17 +963,96 @@ static int rtp_parse_packet_internal(RTPDemuxContext *s, AVPacket *pkt,
     return rv;
 }
 
+static void free_packet_list(RTPPacket **ptr)
+{
+    RTPPacket *pkt = *ptr;
+    while (pkt) {
+        RTPPacket *next = pkt->next;
+        av_free(pkt->buf);
+        av_free(pkt);
+        pkt = next;
+    }
+    *ptr = NULL;
+}
+
 void ff_rtp_reset_packet_queue(RTPDemuxContext *s)
 {
-    while (s->queue) {
-        RTPPacket *next = s->queue->next;
-        av_free(s->queue->buf);
-        av_free(s->queue);
-        s->queue = next;
-    }
+    free_packet_list(&s->queue);
     s->seq       = 0;
     s->queue_len = 0;
     s->prev_ret  = 0;
+    free_packet_list(&s->prev_packets);
+    s->last_packet      = &s->prev_packets;
+    s->prev_packets_len = 0;
+    free_packet_list(&s->unused_fec);
+    s->last_unused_fec = &s->unused_fec;
+    s->unused_fec_len  = 0;
+}
+
+static void enqueue_old_packet(RTPDemuxContext *s, RTPPacket *pkt)
+{
+    pkt->next = NULL;
+    *s->last_packet = pkt;
+    s->last_packet = &pkt->next;
+    s->prev_packets_len++;
+    if (s->prev_packets_len > 25) {
+        RTPPacket *next = s->prev_packets->next;
+        av_free(s->prev_packets->buf);
+        av_free(s->prev_packets);
+        s->prev_packets = next;
+        s->prev_packets_len--;
+    }
+}
+
+static void enqueue_old_packet_buf(RTPDemuxContext *s, uint8_t *buf, int len)
+{
+    uint16_t seq = AV_RB16(buf + 2);
+    RTPPacket *packet;
+    if (s->prev_packets_len >= 25) {
+        packet = s->prev_packets;
+        s->prev_packets = packet->next;
+        s->prev_packets_len--;
+        av_free(packet->buf);
+        packet->next = NULL;
+        packet->recvtime = 0;
+    } else {
+        packet = av_mallocz(sizeof(*packet));
+        if (!packet)
+            return;
+    }
+    packet->seq      = seq;
+    packet->len      = len;
+    packet->buf      = buf;
+    *s->last_packet  = packet;
+    s->last_packet   = &packet->next;
+    s->prev_packets_len++;
+}
+
+static void enqueue_fec(RTPDemuxContext *s, uint8_t *buf, int len, int missing)
+{
+    RTPPacket *packet;
+    if (s->unused_fec_len >= 25) {
+        packet = s->unused_fec;
+        s->unused_fec = packet->next;
+        s->unused_fec_len--;
+        av_free(packet->buf);
+        packet->next = NULL;
+    } else {
+        packet = av_mallocz(sizeof(*packet));
+        if (!packet)
+            return;
+    }
+    packet->len = len;
+    packet->buf = av_malloc(len);
+    packet->nb_missing_prev = missing;
+    if (!packet->buf) {
+        av_free(packet);
+        return;
+    }
+    memcpy(packet->buf, buf, len);
+    *s->last_unused_fec = packet;
+    s->last_unused_fec  = &packet->next;
+    s->unused_fec_len++;
 }
 
 static void enqueue_packet(RTPDemuxContext *s, uint8_t *buf, int len)
@@ -844,8 +1109,12 @@ static int rtp_parse_queued_packet(RTPDemuxContext *s, AVPacket *pkt)
     /* Parse the first packet in the queue, and dequeue it */
     rv   = rtp_parse_packet_internal(s, pkt, s->queue->buf, s->queue->len);
     next = s->queue->next;
-    av_free(s->queue->buf);
-    av_free(s->queue);
+    if (s->ulpfec_pt) {
+        enqueue_old_packet(s, s->queue);
+    } else {
+        av_free(s->queue->buf);
+        av_free(s->queue);
+    }
     s->queue = next;
     s->queue_len--;
     return rv;
@@ -913,11 +1182,17 @@ static int rtp_parse_one_packet(RTPDemuxContext *s, AVPacket *pkt,
         if (s->red_pt && payload_type == s->red_pt) {
             return rtp_parse_red(s, pkt, buf, len);
         } else if (s->ulpfec_pt && payload_type == s->ulpfec_pt) {
-            av_log(NULL, AV_LOG_WARNING, "got %d bytes ulpfec packet\n", len);
+            int missing;
+            rv = rtp_parse_ulpfec(s, buf, len, &missing);
+            if (rv >= 0 && missing > 1)
+                enqueue_fec(s, buf, len, missing);
+            // Pass these ones into the queue as well, so we don't think
+            // we've dropped packets. They should be silently ignored.
+            len = 12;
         } else {
             av_log(NULL, AV_LOG_WARNING, "got %d bytes other packet pt %d\n", len, payload_type);
+            return -1;
         }
-        return -1;
     }
 
     if ((s->seq == 0 && !s->queue) || s->queue_size <= 1) {
@@ -928,8 +1203,15 @@ static int rtp_parse_one_packet(RTPDemuxContext *s, AVPacket *pkt,
         int16_t diff = seq - s->seq;
         if (diff < 0) {
             /* Packet older than the previously emitted one, drop */
-            av_log(s->st ? s->st->codec : NULL, AV_LOG_WARNING,
-                   "RTP: dropping old packet received too late\n");
+            if (!get_old_packet(s, seq)) {
+                av_log(s->st ? s->st->codec : NULL, AV_LOG_WARNING,
+                       "RTP: dropping old packet received too late\n");
+                if (s->ulpfec_pt) {
+                    enqueue_old_packet_buf(s, buf, len);
+                    *bufptr = NULL;
+                    recheck_fec(s);
+                }
+            }
             return -1;
         } else if (diff == 0) {
             /* The last packet received again, ignore */
@@ -937,6 +1219,11 @@ static int rtp_parse_one_packet(RTPDemuxContext *s, AVPacket *pkt,
         } else if (diff == 1) {
             /* Correct packet */
             rv = rtp_parse_packet_internal(s, pkt, buf, len);
+            if (s->ulpfec_pt) {
+                enqueue_old_packet_buf(s, buf, len);
+                *bufptr = NULL;
+                recheck_fec(s);
+            }
             return rv;
         } else {
             /* Still missing some packet, enqueue this one. */
@@ -946,6 +1233,7 @@ static int rtp_parse_one_packet(RTPDemuxContext *s, AVPacket *pkt,
              * even if we're missing something */
             if (s->queue_len >= s->queue_size)
                 return rtp_parse_queued_packet(s, pkt);
+            recheck_fec(s);
             return -1;
         }
     }

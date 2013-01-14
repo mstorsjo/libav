@@ -143,6 +143,7 @@ typedef struct RTPPacket {
     int len;
     int64_t recvtime;
     struct RTPPacket *next;
+    int nb_missing_prev;
 } RTPPacket;
 
 struct RTPDemuxContext {
@@ -172,6 +173,15 @@ struct RTPDemuxContext {
     RTPPacket* queue; ///< A sorted queue of buffered packets not yet returned
     int queue_len;    ///< The number of packets in queue
     int queue_size;   ///< The size of queue, or 0 if reordering is disabled
+    /*@}*/
+
+    /** Fields for forward error correction @{ */
+    RTPPacket* prev_packets; ///< A sorted queue of buffered packets already processed
+    RTPPacket** last_packet;
+    int prev_packets_len;
+    RTPPacket* unused_fec;
+    RTPPacket** last_unused_fec;
+    int unused_fec_len;
     /*@}*/
 
     /* rtcp sender statistics receive */
