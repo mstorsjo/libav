@@ -19,6 +19,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#ifndef OMX_SKIP64BIT
+#define OMX_SKIP64BIT
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 
