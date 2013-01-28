@@ -36,6 +36,21 @@
 #include <sys/time.h>
 #include "h264.h"
 
+#ifdef OMX_SKIP64BIT
+static OMX_TICKS toOmxTicks(int64_t value) {
+    OMX_TICKS s;
+    s.nLowPart = value;
+    s.nHighPart = value >> 32;
+    return s;
+}
+static int64_t fromOmxTicks(OMX_TICKS value) {
+    return (((int64_t)value.nHighPart) << 32) | value.nLowPart;
+}
+#else
+#define toOmxTicks(x) x
+#define fromOmxTicks(x) x
+#endif
+
 #define OMX_QCOM_COLOR_FormatYVU420SemiPlanar 0x7FA30C00
 #define OMX_TI_COLOR_FormatYUV420PackedSemiPlanar 0x7F000100
 
@@ -772,7 +787,7 @@ static int omx_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         buffer->nOffset = 0;
         // Convert the timestamps to microseconds; some encoders can ignore
         // the framerate and do VFR bit allocation based on timestamps.
-        buffer->nTimeStamp = av_rescale_q(frame->pts, avctx->time_base, AV_TIME_BASE_Q);
+        buffer->nTimeStamp = toOmxTicks(av_rescale_q(frame->pts, avctx->time_base, AV_TIME_BASE_Q));
         OMX_EmptyThisBuffer(s->handle, buffer);
         s->num_in_frames++;
     }
@@ -827,7 +842,7 @@ retry:
         av_freep(&s->output_buf);
         s->output_buf_size = 0;
         avctx->coded_frame = &s->frame;
-        pkt->pts = avctx->coded_frame->pts = av_rescale_q(buffer->nTimeStamp, AV_TIME_BASE_Q, avctx->time_base);
+        pkt->pts = avctx->coded_frame->pts = av_rescale_q(fromOmxTicks(buffer->nTimeStamp), AV_TIME_BASE_Q, avctx->time_base);
         if (buffer->nFlags & OMX_BUFFERFLAG_SYNCFRAME)
             pkt->flags |= AV_PKT_FLAG_KEY;
         *got_packet = 1;
@@ -980,7 +995,7 @@ static av_cold int omx_decode_init(AVCodecContext *avctx)
         buffer->nFilledLen = s->extradata_size;
         buffer->nFlags = OMX_BUFFERFLAG_CODECCONFIG | OMX_BUFFERFLAG_ENDOFFRAME;
         buffer->nOffset = 0;
-        buffer->nTimeStamp = 0;
+        buffer->nTimeStamp = toOmxTicks(0);
         OMX_EmptyThisBuffer(s->handle, buffer);
     }
 
@@ -1097,7 +1112,7 @@ start:
         buffer->nFilledLen = avpkt->size;
         buffer->nFlags = OMX_BUFFERFLAG_ENDOFFRAME;
         buffer->nOffset = 0;
-        buffer->nTimeStamp = avpkt->pts;
+        buffer->nTimeStamp = toOmxTicks(avpkt->pts);
         OMX_EmptyThisBuffer(s->handle, buffer);
         s->num_in_frames++;
     }
@@ -1161,7 +1176,7 @@ start:
             }
         }
 
-        frame->pts = frame->pkt_pts = buffer->nTimeStamp;
+        frame->pts = frame->pkt_pts = fromOmxTicks(buffer->nTimeStamp);
         frame->pkt_dts = AV_NOPTS_VALUE;
         *got_frame = 1;
         OMX_FillThisBuffer(s->handle, buffer);
