@@ -995,8 +995,38 @@ static av_cold int omx_decode_init(AVCodecContext *avctx)
         buffer = s->free_in_buffers[--s->num_free_in_buffers];
         pthread_mutex_unlock(&s->input_mutex);
 
-        memcpy(buffer->pBuffer, s->extradata, s->extradata_size);
-        buffer->nFilledLen = s->extradata_size;
+        if (avctx->codec_id == AV_CODEC_ID_WMV3 && s->extradata_size >= 4 &&
+            buffer->nAllocLen >= 36) {
+            int profile;
+            // According to OMX IL 1.2.0 spec (4.3.33.2), the codec config
+            // data for VC-1 Main/Simple (aka WMV3) is according to table 265
+            // in the VC-1 spec. Most of the fields are just set with placehold
+            // (like framerate, hrd_buffer/rate).
+            static const uint8_t wmv3seq[] = {
+                0xff, 0xff, 0xff, 0xc5, // numframes=ffffff, marker byte
+                0x04, 0x00, 0x00, 0x00, // marker byte
+                0x00, 0x00, 0x00, 0x00, // struct C, almost equal to p_extra
+                0x00, 0x00, 0x00, 0x00, // struct A, vert size
+                0x00, 0x00, 0x00, 0x00, // struct A, horiz size
+                0x0c, 0x00, 0x00, 0x00, // marker byte
+                0xff, 0xff, 0x00, 0x80, // struct B, level=4, cbr=0, hrd_buffer
+                0xff, 0xff, 0x00, 0x00, // struct B, hrd_rate=ffff
+                0xff, 0xff, 0xff, 0xff, // struct B, framerate=ffffffff
+            };
+            memcpy(buffer->pBuffer, wmv3seq, sizeof(wmv3seq));
+            buffer->nFilledLen = sizeof(wmv3seq);
+            // Struct C - almost equal to the extradata
+            memcpy(&buffer->pBuffer[8], s->extradata, 4);
+            // Expand profile from the highest 2 bits to the highest 4 bits
+            profile = buffer->pBuffer[8] >> 6;
+            buffer->pBuffer[8] = (buffer->pBuffer[8] & 0x0f) | (profile << 4);
+            // Fill in the height/width for struct A
+            AV_WL32(&buffer->pBuffer[12], avctx->height);
+            AV_WL32(&buffer->pBuffer[16], avctx->width);
+        } else {
+            memcpy(buffer->pBuffer, s->extradata, s->extradata_size);
+            buffer->nFilledLen = s->extradata_size;
+        }
         buffer->nFlags = OMX_BUFFERFLAG_CODECCONFIG | OMX_BUFFERFLAG_ENDOFFRAME;
         buffer->nOffset = 0;
         buffer->nTimeStamp = toOmxTicks(0);
