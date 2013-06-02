@@ -2784,11 +2784,9 @@ static int mov_flush_fragment(AVFormatContext *s)
         track->entry = 0;
         if (!track->mdat_buf)
             continue;
-        buf_size = avio_close_dyn_buf(track->mdat_buf, &buf);
-        track->mdat_buf = NULL;
+        buf_size = avio_reset_dyn_buf(track->mdat_buf, &buf);
 
         avio_write(s->pb, buf, buf_size);
-        av_free(buf);
     }
 
     mov->mdat_size = 0;
@@ -3219,7 +3217,15 @@ static int mov_write_trailer(AVFormatContext *s)
 
         mov_write_moov_tag(pb, mov, s);
     } else {
+        uint8_t *buf;
         mov_flush_fragment(s);
+        for (i = 0; i < mov->nb_streams; ++i) {
+            if (mov->tracks[i].mdat_buf) {
+                avio_close_dyn_buf(mov->tracks[i].mdat_buf, &buf);
+                mov->tracks[i].mdat_buf = NULL;
+                av_free(buf);
+            }
+        }
         mov_write_mfra_tag(pb, mov);
     }
 
