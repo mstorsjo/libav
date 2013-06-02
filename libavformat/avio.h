@@ -391,6 +391,16 @@ int avio_open_dyn_buf(AVIOContext **s);
 int avio_close_dyn_buf(AVIOContext *s, uint8_t **pbuffer);
 
 /**
+ * Return the written size and a pointer to the buffer. Sets the
+ * writing position to the beginning of the buffer, so it can be reused.
+ *
+ * @param s IO context
+ * @param pbuffer pointer to a byte buffer
+ * @return the length of the byte buffer
+ */
+int avio_reset_dyn_buf(AVIOContext *s, uint8_t **pbuffer);
+
+/**
  * Iterate through names of available protocols.
  *
  * @param opaque A private pointer representing current protocol.
