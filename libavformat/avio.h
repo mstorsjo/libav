@@ -112,6 +112,10 @@ typedef struct AVIOContext {
     int64_t (*read_seek)(void *opaque, int stream_index,
                          int64_t timestamp, int flags);
     /**
+     * Set the underlying stream into blocking or non-blocking mode.
+     */
+    int (*set_nonblocking)(void *opaque, int nonblocking);
+    /**
      * A combination of AVIO_SEEKABLE_ flags or 0 when the stream is not seekable.
      */
     int seekable;

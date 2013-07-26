@@ -670,6 +670,17 @@ uint64_t ffio_read_varlen(AVIOContext *bc){
     return val;
 }
 
+static int urlcontext_set_nonblocking(URLContext *h, int nonblocking)
+{
+    // Should we allow calling this on any protocol, or just those that
+    // actually do support it (by adding a protocol flag)?
+    if (nonblocking)
+        h->flags |= AVIO_FLAG_NONBLOCK;
+    else
+        h->flags &= ~AVIO_FLAG_NONBLOCK;
+    return 0;
+}
+
 int ffio_fdopen(AVIOContext **s, URLContext *h)
 {
     uint8_t *buffer;
@@ -697,6 +708,7 @@ int ffio_fdopen(AVIOContext **s, URLContext *h)
         (*s)->read_pause = (int (*)(void *, int))h->prot->url_read_pause;
         (*s)->read_seek  = (int64_t (*)(void *, int, int64_t, int))h->prot->url_read_seek;
     }
+    (*s)->set_nonblocking = urlcontext_set_nonblocking;
     (*s)->av_class = &ffio_url_class;
     return 0;
 }
@@ -830,6 +842,13 @@ int avio_pause(AVIOContext *s, int pause)
     if (!s->read_pause)
         return AVERROR(ENOSYS);
     return s->read_pause(s->opaque, pause);
+}
+
+int ffio_set_nonblocking(AVIOContext *s, int nonblocking)
+{
+    if (!s->set_nonblocking)
+        return AVERROR(ENOSYS);
+    return s->set_nonblocking(s->opaque, nonblocking);
 }
 
 int64_t avio_seek_time(AVIOContext *s, int stream_index,
