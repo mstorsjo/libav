@@ -1552,7 +1552,7 @@ loop_end:
         assert_file_overwrite(filename);
 
         /* open the file */
-        if ((err = avio_open2(&oc->pb, filename, AVIO_FLAG_WRITE,
+        if ((err = avio_open2(&oc->pb, filename, AVIO_FLAG_READ_WRITE,
                               &oc->interrupt_callback,
                               &of->opts)) < 0) {
             print_error(filename, err);
