@@ -49,6 +49,9 @@ struct RTPMuxContext {
     uint8_t *buf;
     uint8_t *buf_ptr;
 
+    int parse_rtcp;
+    char *rtcp_log;
+
     int max_frames_per_packet;
 
     /**

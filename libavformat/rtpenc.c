@@ -22,10 +22,12 @@
 #include "avformat.h"
 #include "mpegts.h"
 #include "internal.h"
+#include "libavutil/intreadwrite.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/random_seed.h"
 #include "libavutil/opt.h"
 
+#include "avio_internal.h"
 #include "rtpenc.h"
 
 static const AVOption options[] = {
@@ -34,6 +36,8 @@ static const AVOption options[] = {
     { "ssrc", "Stream identifier", offsetof(RTPMuxContext, ssrc), AV_OPT_TYPE_INT, { .i64 = 0 }, INT_MIN, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM },
     { "cname", "CNAME to include in RTCP SR packets", offsetof(RTPMuxContext, cname), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, AV_OPT_FLAG_ENCODING_PARAM },
     { "seq", "Starting sequence number", offsetof(RTPMuxContext, seq), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 65535, AV_OPT_FLAG_ENCODING_PARAM },
+    { "parse_rtcp", "", offsetof(RTPMuxContext, parse_rtcp), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, AV_OPT_FLAG_ENCODING_PARAM },
+    { "rtcp_log", "", offsetof(RTPMuxContext, rtcp_log), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, AV_OPT_FLAG_ENCODING_PARAM },
     { NULL },
 };
 
@@ -477,6 +481,64 @@ static int rtp_send_ilbc(AVFormatContext *s1, const uint8_t *buf, int size)
     return 0;
 }
 
+static void append_rtcp_rr(AVFormatContext *s1, uint32_t peer_ssrc,
+                           uint32_t our_ssrc, uint32_t fraction,
+                           uint32_t cumulative, uint32_t extended_max,
+                           uint32_t jitter, uint32_t lsr, uint32_t dlsr)
+{
+#define LINE_MAX_LENGTH 150
+    RTPMuxContext *s = s1->priv_data;
+    int len = s->rtcp_log ? strlen(s->rtcp_log) : 0;
+    char *buf = av_realloc(s->rtcp_log, len + LINE_MAX_LENGTH);
+    if (!buf)
+        return;
+    s->rtcp_log = buf;
+
+    snprintf(buf + len, LINE_MAX_LENGTH,
+             "RTCP RR peer_ssrc=%x our_ssrc=%x fraction=%u "
+             "cumulative=%u extended_max=%u jitter=%u lsr=%u dlsr=%u\n",
+             peer_ssrc, our_ssrc, fraction, cumulative, extended_max,
+             jitter, lsr, dlsr);
+}
+
+static void parse_rtcp(AVFormatContext *s1, const uint8_t *buf, int len)
+{
+    int payload_len;
+    uint32_t peer_ssrc = 0, our_ssrc = 0;
+    uint8_t fraction = 0;
+    uint32_t cumulative = 0, extended_max = 0, jitter = 0, lsr = 0, dlsr = 0;
+    while (len >= 4) {
+        payload_len = FFMIN(len, (AV_RB16(buf + 2) + 1) * 4);
+
+        switch (buf[1]) {
+        case RTCP_RR:
+            if (payload_len < 8) {
+                av_log(s1, AV_LOG_WARNING,
+                       "Invalid length %d for RTCP RR packet\n", payload_len);
+                return;
+            }
+            peer_ssrc = AV_RB32(buf + 4);
+            if (payload_len >= 12)
+                our_ssrc = AV_RB32(buf + 8);
+            if (payload_len >= 24) {
+                fraction = AV_RB8(buf + 12);
+                cumulative = AV_RB24(buf + 13);
+                extended_max = AV_RB32(buf + 16);
+                jitter = AV_RB32(buf + 20);
+            }
+            if (payload_len >= 32) {
+                lsr = AV_RB32(buf + 24);
+                dlsr = AV_RB32(buf + 28);
+            }
+            append_rtcp_rr(s1, peer_ssrc, our_ssrc, fraction, cumulative,
+                           extended_max, jitter, lsr, dlsr);
+            break;
+        }
+        buf += payload_len;
+        len -= payload_len;
+    }
+}
+
 static int rtp_write_packet(AVFormatContext *s1, AVPacket *pkt)
 {
     RTPMuxContext *s = s1->priv_data;
@@ -485,6 +547,20 @@ static int rtp_write_packet(AVFormatContext *s1, AVPacket *pkt)
     int size= pkt->size;
 
     av_dlog(s1, "%d: write len=%d\n", pkt->stream_index, size);
+
+    if (s->parse_rtcp) {
+        if (ffio_set_nonblocking(s1->pb, 1)) {
+            av_log(s1, AV_LOG_WARNING,
+                   "Unable to set AVIOContext into nonblocking mode, unable "
+                   "to parse RTCP packets.");
+        } else {
+            uint8_t buf[1500];
+            int n;
+            while ((n = ffio_read_partial(s1->pb, buf, sizeof(buf))) > 0)
+                parse_rtcp(s1, buf, n);
+            ffio_set_nonblocking(s1->pb, 0);
+        }
+    }
 
     rtcp_bytes = ((s->octet_count - s->last_octet_count) * RTCP_TX_RATIO_NUM) /
         RTCP_TX_RATIO_DEN;
