@@ -372,6 +372,16 @@ static void write_frame(AVFormatContext *s, AVPacket *pkt, OutputStream *ost)
         print_error("av_interleaved_write_frame()", ret);
         exit_program(1);
     }
+    if (s->priv_data) {
+        uint8_t *log = NULL;
+        if (!av_opt_get(s->priv_data, "rtcp_log", 0, &log) && log) {
+            if (log[0]) {
+                printf("rtcp_log: %s", log);
+                av_opt_set(s->priv_data, "rtcp_log", "", 0);
+            }
+            av_free(log);
+        }
+    }
 }
 
 static int check_recording_time(OutputStream *ost)
