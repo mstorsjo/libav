@@ -456,6 +456,12 @@ typedef struct RTSPStream {
 
     char crypto_suite[40];
     char crypto_params[100];
+
+    AVIOContext *rtcp_buffer;
+    uint8_t *rtcp_ptr;
+    int rtcp_pos, rtcp_size;
+    void *orig_opaque;
+    int (*orig_write_packet)(void *opaque, uint8_t *buf, int buf_size);
 } RTSPStream;
 
 void ff_rtsp_parse_line(RTSPMessageHeader *reply, const char *buf,

@@ -181,6 +181,67 @@ int ff_rtsp_tcp_write_packet(AVFormatContext *s, RTSPStream *rtsp_st,
     return 0;
 }
 
+static int receive_rtcp(AVFormatContext *s)
+{
+    RTSPState *rt = s->priv_data;
+    RTSPStream *rtsp_st;
+    uint8_t buf[RTSP_TCP_MAX_PACKET_SIZE];
+    int id, len, i;
+    int ret = ffurl_read_complete(rt->rtsp_hd, buf, 3);
+    if (ret != 3)
+        return AVERROR(EIO);
+    id = buf[0];
+    len = AV_RB16(buf + 1);
+    if (len > sizeof(buf) || len < 12)
+        return AVERROR(EIO);
+    ret = ffurl_read_complete(rt->rtsp_hd, buf, len);
+    if (ret != len)
+        return AVERROR(EIO);
+    /* find the matching stream */
+    for (i = 0; i < rt->nb_rtsp_streams; i++) {
+        rtsp_st = rt->rtsp_streams[i];
+        if (id >= rtsp_st->interleaved_min &&
+            id <= rtsp_st->interleaved_max)
+            goto found;
+    }
+    return AVERROR(EIO);
+
+found:
+    if (!rtsp_st->rtcp_buffer) {
+        if ((ret = avio_open_dyn_buf(&rtsp_st->rtcp_buffer)) < 0)
+            return ret;
+    }
+    avio_wb32(rtsp_st->rtcp_buffer, len);
+    avio_write(rtsp_st->rtcp_buffer, buf, len);
+    return 0;
+}
+
+static int wrap_read_packet(void *opaque, uint8_t *buf, int buf_size)
+{
+    RTSPStream *rtsp_st = opaque;
+    int len, min_len;
+    if (rtsp_st->rtcp_pos + 4 >= rtsp_st->rtcp_size)
+        return AVERROR(EAGAIN);
+    len = AV_RB32(rtsp_st->rtcp_ptr + rtsp_st->rtcp_pos);
+    rtsp_st->rtcp_pos += 4;
+    len = FFMIN(len, rtsp_st->rtcp_size - rtsp_st->rtcp_pos);
+    min_len = FFMIN(len, buf_size);
+    memcpy(buf, rtsp_st->rtcp_ptr + rtsp_st->rtcp_pos, min_len);
+    rtsp_st->rtcp_pos += len;
+    return min_len;
+}
+
+static int wrap_write_packet(void *opaque, uint8_t *buf, int buf_size)
+{
+    RTSPStream *rtsp_st = opaque;
+    return rtsp_st->orig_write_packet(rtsp_st->orig_opaque, buf, buf_size);
+}
+
+static int wrap_set_nonblocking(void *opaque, int nonblocking)
+{
+    return 0;
+}
+
 static int rtsp_write_packet(AVFormatContext *s, AVPacket *pkt)
 {
     RTSPState *rt = s->priv_data;
@@ -204,8 +265,14 @@ static int rtsp_write_packet(AVFormatContext *s, AVPacket *pkt)
             ret = ff_rtsp_read_reply(s, &reply, NULL, 1, NULL);
             if (ret < 0)
                 return AVERROR(EPIPE);
-            if (ret == 1)
-                ff_rtsp_skip_packet(s);
+            if (ret == 1) {
+                if (rt->parse_rtcp)
+                    ret = receive_rtcp(s);
+                else
+                    ff_rtsp_skip_packet(s);
+                if (ret < 0)
+                    return ret;
+            }
             /* XXX: parse message */
             if (rt->state != RTSP_STATE_STREAMING)
                 return AVERROR(EPIPE);
@@ -217,7 +284,28 @@ static int rtsp_write_packet(AVFormatContext *s, AVPacket *pkt)
     rtsp_st = rt->rtsp_streams[pkt->stream_index];
     rtpctx = rtsp_st->transport_priv;
 
+    if (rt->parse_rtcp && rt->lower_transport == RTSP_LOWER_TRANSPORT_TCP) {
+        if (rtsp_st->rtcp_buffer) {
+            av_freep(&rtsp_st->rtcp_ptr);
+            rtsp_st->rtcp_size = avio_close_dyn_buf(rtsp_st->rtcp_buffer,
+                                                    &rtsp_st->rtcp_ptr);
+            rtsp_st->rtcp_buffer = NULL;
+            rtsp_st->rtcp_pos = 0;
+        }
+        rtsp_st->orig_opaque        = rtpctx->pb->opaque;
+        rtsp_st->orig_write_packet  = rtpctx->pb->write_packet;
+        rtpctx->pb->opaque          = rtsp_st;
+        rtpctx->pb->write_packet    = wrap_write_packet;
+        rtpctx->pb->read_packet     = wrap_read_packet;
+        rtpctx->pb->set_nonblocking = wrap_set_nonblocking;
+    }
     ret = ff_write_chained(rtpctx, 0, pkt, s);
+    if (rt->parse_rtcp && rt->lower_transport == RTSP_LOWER_TRANSPORT_TCP) {
+        rtpctx->pb->opaque          = rtsp_st->orig_opaque;
+        rtpctx->pb->write_packet    = rtsp_st->orig_write_packet;
+        rtpctx->pb->read_packet     = NULL;
+        rtpctx->pb->set_nonblocking = NULL;
+    }
     /* ff_write_chained does all the RTP packetization. If using TCP as
      * transport, rtpctx->pb is only a dyn_packet_buf that queues up the
      * packets, so we need to send them out on the TCP connection separately.

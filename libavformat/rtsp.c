@@ -694,6 +694,12 @@ void ff_rtsp_close_streams(AVFormatContext *s)
                 av_free(rtsp_st->exclude_source_addrs[j]);
             av_freep(&rtsp_st->exclude_source_addrs);
 
+            av_freep(&rtsp_st->rtcp_ptr);
+            if (rtsp_st->rtcp_buffer) {
+                uint8_t *ptr;
+                avio_close_dyn_buf(rtsp_st->rtcp_buffer, &ptr);
+                av_free(ptr);
+            }
             av_free(rtsp_st);
         }
     }
