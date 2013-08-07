@@ -2000,6 +2000,16 @@ redo:
 #if CONFIG_RTSP_DEMUXER
     case RTSP_LOWER_TRANSPORT_TCP:
         len = ff_rtsp_tcp_read_packet(s, &rtsp_st, rt->recvbuf, RECVBUF_SIZE);
+        if (len > 0 && rtsp_st->transport_priv && rt->transport == RTSP_TRANSPORT_RTP) {
+            AVIOContext *io = NULL;
+            int size;
+            uint8_t *buf;
+            ffio_open_dyn_packet_buf(&io, RTSP_TCP_MAX_PACKET_SIZE);
+            ff_rtp_check_and_send_back_rr(rtsp_st->transport_priv, NULL, io, len);
+            size = avio_close_dyn_buf(io, &buf);
+            ff_rtsp_tcp_write_packet(s, rtsp_st, buf, size);
+            av_free(buf);
+        }
         break;
 #endif
     case RTSP_LOWER_TRANSPORT_UDP:

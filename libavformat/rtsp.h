@@ -614,4 +614,7 @@ int ff_rtsp_open_transport_ctx(AVFormatContext *s, RTSPStream *rtsp_st);
 
 extern const AVOption ff_rtsp_options[];
 
+int ff_rtsp_tcp_write_packet(AVFormatContext *s, RTSPStream *rtsp_st,
+                             uint8_t *ptr, int size);
+
 #endif /* AVFORMAT_RTSP_H */
