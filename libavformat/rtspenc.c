@@ -224,6 +224,21 @@ static int rtsp_write_packet(AVFormatContext *s, AVPacket *pkt)
      */
     if (!ret && rt->lower_transport == RTSP_LOWER_TRANSPORT_TCP)
         ret = tcp_write_packet(s, rtsp_st);
+    if (rt->parse_rtcp) {
+        uint8_t *log = NULL;
+        if (!av_opt_get(rtpctx->priv_data, "rtcp_log", 0, &log) && log) {
+            if (log[0]) {
+                int len = rt->rtcp_log ? strlen(rt->rtcp_log) : 0;
+                char *buf = av_realloc(rt->rtcp_log, len + strlen(log));
+                if (buf) {
+                    memcpy(buf + len, log, strlen(log) + 1);
+                    rt->rtcp_log = buf;
+                }
+                av_opt_set(rtpctx->priv_data, "rtcp_log", "", 0);
+            }
+            av_free(log);
+        }
+    }
     return ret;
 }
 

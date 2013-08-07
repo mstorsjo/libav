@@ -90,6 +90,8 @@ const AVOption ff_rtsp_options[] = {
     { "max_port", "Maximum local UDP port", OFFSET(rtp_port_max), AV_OPT_TYPE_INT, {.i64 = RTSP_RTP_PORT_MAX}, 0, 65535, DEC|ENC },
     { "timeout", "Maximum timeout (in seconds) to wait for incoming connections. -1 is infinite. Implies flag listen", OFFSET(initial_timeout), AV_OPT_TYPE_INT, {.i64 = -1}, INT_MIN, INT_MAX, DEC },
     RTSP_REORDERING_OPTS(),
+    { "parse_rtcp", "", OFFSET(parse_rtcp), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, ENC },
+    { "rtcp_log", "", OFFSET(rtcp_log), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, ENC },
     { NULL },
 };
 
@@ -724,6 +726,7 @@ int ff_rtsp_open_transport_ctx(AVFormatContext *s, RTSPStream *rtsp_st)
         s->ctx_flags |= AVFMTCTX_NOHEADER;
 
     if (s->oformat && CONFIG_RTSP_MUXER) {
+        AVFormatContext *rtpctx;
         int ret = ff_rtp_chain_mux_open(&rtsp_st->transport_priv, s, st,
                                         rtsp_st->rtp_handle,
                                         RTSP_TCP_MAX_PACKET_SIZE,
@@ -732,6 +735,9 @@ int ff_rtsp_open_transport_ctx(AVFormatContext *s, RTSPStream *rtsp_st)
         rtsp_st->rtp_handle = NULL;
         if (ret < 0)
             return ret;
+        rtpctx = rtsp_st->transport_priv;
+        if (rt->parse_rtcp)
+            av_opt_set(rtpctx, "parse_rtcp", "1", AV_OPT_SEARCH_CHILDREN);
     } else if (rt->transport == RTSP_TRANSPORT_RAW) {
         return 0; // Don't need to open any parser here
     } else if (rt->transport == RTSP_TRANSPORT_RDT && CONFIG_RTPDEC)
