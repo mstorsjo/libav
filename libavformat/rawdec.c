@@ -163,3 +163,7 @@ AVInputFormat ff_shorten_demuxer = {
 #if CONFIG_VC1_DEMUXER
 FF_DEF_RAWVIDEO_DEMUXER(vc1, "raw VC-1", NULL, "vc1", AV_CODEC_ID_VC1)
 #endif
+
+#if CONFIG_HEVC_DEMUXER
+FF_DEF_RAWVIDEO_DEMUXER(hevc, "raw HEVC video format", NULL, "hevc,h265,265", AV_CODEC_ID_HEVC)
+#endif

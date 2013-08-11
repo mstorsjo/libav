@@ -153,6 +153,7 @@ void avcodec_register_all(void)
     REGISTER_DECODER(H263I,             h263i);
     REGISTER_ENCODER(H263P,             h263p);
     REGISTER_DECODER(H264,              h264);
+    REGISTER_DECODER(HEVC,              hevc);
     REGISTER_ENCDEC (HUFFYUV,           huffyuv);
     REGISTER_DECODER(IDCIN,             idcin);
     REGISTER_DECODER(IFF_BYTERUN1,      iff_byterun1);
@@ -449,6 +450,7 @@ void avcodec_register_all(void)
     REGISTER_PARSER(H261,               h261);
     REGISTER_PARSER(H263,               h263);
     REGISTER_PARSER(H264,               h264);
+    REGISTER_PARSER(HEVC,               hevc);
     REGISTER_PARSER(MJPEG,              mjpeg);
     REGISTER_PARSER(MLP,                mlp);
     REGISTER_PARSER(MPEG4VIDEO,         mpeg4video);
