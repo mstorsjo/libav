@@ -85,6 +85,12 @@ avconv(){
     run avconv ${avconv_args}
 }
 
+explode(){
+    cmp=null
+    ref=/dev/null
+    avconv -xerror -err_detect explode "$@" -f null -
+}
+
 framecrc(){
     avconv "$@" -f framecrc -
 }
