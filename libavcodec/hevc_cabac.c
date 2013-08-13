@@ -461,8 +461,9 @@ int ff_hevc_sao_offset_sign_decode(HEVCContext *s)
 
 int ff_hevc_sao_eo_class_decode(HEVCContext *s)
 {
-    return (get_cabac_bypass(s->HEVClc->cc) << 1) |
-        get_cabac_bypass(s->HEVClc->cc);
+    int ret = (get_cabac_bypass(s->HEVClc->cc) << 1);
+    ret    |=  get_cabac_bypass(s->HEVClc->cc);
+    return ret;
 }
 
 int ff_hevc_end_of_slice_flag_decode(HEVCContext *s)
@@ -610,11 +611,13 @@ int ff_hevc_rem_intra_luma_pred_mode_decode(HEVCContext *s)
 
 int ff_hevc_intra_chroma_pred_mode_decode(HEVCContext *s)
 {
+    int ret;
     if (!GET_CABAC(elem_offset[INTRA_CHROMA_PRED_MODE]))
         return 4;
 
-    return (get_cabac_bypass(s->HEVClc->cc) << 1) |
-        get_cabac_bypass(s->HEVClc->cc);
+    ret  = (get_cabac_bypass(s->HEVClc->cc) << 1);
+    ret |=  get_cabac_bypass(s->HEVClc->cc);
+    return ret;
 }
 
 int ff_hevc_merge_idx_decode(HEVCContext *s)
