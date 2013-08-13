@@ -2151,7 +2151,8 @@ static int hls_nal_unit(HEVCContext *s)
     return (nuh_layer_id == 0);
 }
 
-static void calc_md5(uint8_t *md5, uint8_t* src, int stride, int width, int height)
+static void calc_md5(uint8_t *md5, const uint8_t *src, int stride,
+                     int width, int height)
 {
     uint8_t *buf;
     int y, x;
@@ -2442,7 +2443,7 @@ static int decode_nal_units(HEVCContext *s, const uint8_t *buf, int length)
     return 0;
 }
 
-static int compare_md5(uint8_t *md5_in1, uint8_t *md5_in2)
+static int compare_md5(const uint8_t *md5_in1, const uint8_t *md5_in2)
 {
     int i;
     for (i = 0; i < 16; i++)
