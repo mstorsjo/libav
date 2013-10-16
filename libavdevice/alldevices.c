@@ -51,7 +51,7 @@ void avdevice_register_all(void)
     REGISTER_INDEV   (AVFOUNDATION,     avfoundation);
     REGISTER_INDEV   (BKTR,             bktr);
     REGISTER_INDEV   (DV1394,           dv1394);
-    REGISTER_INDEV   (FBDEV,            fbdev);
+    REGISTER_INOUTDEV(FBDEV,            fbdev);
     REGISTER_INDEV   (JACK,             jack);
     REGISTER_INDEV   (OMX_CAMERA,       omx_camera);
     REGISTER_OUTDEV  (OMX_RENDER,       omx_render);
