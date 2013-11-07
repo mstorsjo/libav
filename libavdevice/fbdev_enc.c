@@ -46,18 +46,24 @@ static av_cold int fbdev_write_header(AVFormatContext *h)
     enum AVPixelFormat pix_fmt;
     int ret, flags = O_RDWR;
     char errbuf[128];
+    const char* device;
 
     if (h->nb_streams != 1 || h->streams[0]->codec->codec_type != AVMEDIA_TYPE_VIDEO) {
         av_log(fbdev, AV_LOG_ERROR, "Only a single video stream is supported.\n");
         return AVERROR(EINVAL);
     }
 
-    if ((fbdev->fd = avpriv_open(h->filename, flags)) == -1) {
+    if (h->filename[0])
+        device = h->filename;
+    else
+        device = ff_fbdev_default_device();
+
+    if ((fbdev->fd = avpriv_open(device, flags)) == -1) {
         ret = AVERROR(errno);
         av_strerror(ret, errbuf, sizeof(errbuf));
         av_log(h, AV_LOG_ERROR,
                "Could not open framebuffer device '%s': %s\n",
-               h->filename, errbuf);
+               device, errbuf);
         return ret;
     }
 
