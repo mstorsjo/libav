@@ -34,6 +34,8 @@ OBJS-$(CONFIG_LIBDC1394_INDEV)           += libdc1394.o
 OBJS-$(CONFIG_OMX_CAMERA_INDEV)          += omx_camera.o
 OBJS-$(CONFIG_OMX_RENDER_OUTDEV)         += omx_render.o
 
+SKIPHEADERS-$(CONFIG_FBDEV_INDEV)        += fbdev_common.h
+SKIPHEADERS-$(CONFIG_FBDEV_OUTDEV)       += fbdev_common.h
 SKIPHEADERS-$(HAVE_ALSA)                 += alsa.h
 SKIPHEADERS-$(HAVE_SNDIO)                += sndio.h
 
