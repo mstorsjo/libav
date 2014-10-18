@@ -71,6 +71,7 @@ static av_cold int fbdev_read_header(AVFormatContext *avctx)
     enum AVPixelFormat pix_fmt;
     int ret, flags = O_RDONLY;
     char errbuf[128];
+    const char* device;
 
     ret = av_parse_video_rate(&fbdev->framerate_q, fbdev->framerate);
     if (ret < 0) {
@@ -86,12 +87,17 @@ static av_cold int fbdev_read_header(AVFormatContext *avctx)
     if (avctx->flags & AVFMT_FLAG_NONBLOCK)
         flags |= O_NONBLOCK;
 
-    if ((fbdev->fd = avpriv_open(avctx->filename, flags)) == -1) {
+    if (avctx->filename[0])
+        device = avctx->filename;
+    else
+        device = ff_fbdev_default_device();
+
+    if ((fbdev->fd = avpriv_open(device, flags)) == -1) {
         ret = AVERROR(errno);
         av_strerror(ret, errbuf, sizeof(errbuf));
         av_log(avctx, AV_LOG_ERROR,
                "Could not open framebuffer device '%s': %s\n",
-               avctx->filename, errbuf);
+               device, errbuf);
         return ret;
     }
 
