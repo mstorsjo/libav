@@ -58,7 +58,7 @@ typedef struct OutputStream {
     int init_range_length;
     int nb_segments, segments_size, segment_index;
     Segment **segments;
-    int64_t first_dts, start_dts, end_dts;
+    int64_t first_pts, start_pts, max_pts;
     char bandwidth_str[64];
 
     char codec_str[100];
@@ -360,9 +360,9 @@ static int write_manifest(AVFormatContext *s, int final)
     } else if (c->use_template && c->use_timeline) {
         start_time = 0;
         for (i = 0; i < s->nb_streams; i++) {
-            if (c->streams[i].first_dts != AV_NOPTS_VALUE) {
+            if (c->streams[i].first_pts != AV_NOPTS_VALUE) {
                 start_time = FFMAX(start_time,
-                                   av_rescale_q_rnd(c->streams[i].first_dts,
+                                   av_rescale_q_rnd(c->streams[i].first_pts,
                                                     s->streams[i]->time_base,
                                                     AV_TIME_BASE_Q, AV_ROUND_UP));
             }
@@ -525,7 +525,7 @@ static int dash_write_header(AVFormatContext *s)
             c->has_audio = 1;
 
         set_codec_str(s, os->ctx->streams[0]->codec, os->codec_str, sizeof(os->codec_str));
-        os->first_dts = AV_NOPTS_VALUE;
+        os->first_pts = AV_NOPTS_VALUE;
         os->segment_index = 1;
     }
 
@@ -659,7 +659,7 @@ static int dash_flush(AVFormatContext *s, int final, int stream)
             if (ret < 0)
                 break;
         }
-        add_segment(os, filename, os->start_dts, os->end_dts - os->start_dts, start_pos, range_length, index_length);
+        add_segment(os, filename, os->start_pts, os->max_pts - os->start_pts, start_pos, range_length, index_length);
     }
 
     if (c->window_size || (final && c->remove_at_exit)) {
@@ -697,25 +697,25 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     // If forcing the stream to start at 0, the mp4 muxer will set the start
     // timestamps to 0. Do the same here, to avoid mismatches in duration/timestamps.
-    if (os->first_dts == AV_NOPTS_VALUE &&
+    if (os->first_pts == AV_NOPTS_VALUE &&
         s->avoid_negative_ts == AVFMT_AVOID_NEG_TS_MAKE_ZERO) {
         pkt->pts -= pkt->dts;
         pkt->dts  = 0;
     }
 
-    if (os->first_dts == AV_NOPTS_VALUE)
-        os->first_dts = pkt->dts;
+    if (os->first_pts == AV_NOPTS_VALUE)
+        os->first_pts = pkt->pts;
 
     if ((!c->has_video || st->codec->codec_type == AVMEDIA_TYPE_VIDEO) &&
         pkt->flags & AV_PKT_FLAG_KEY && os->packets_written &&
-        av_compare_ts(pkt->dts - os->first_dts, st->time_base,
+        av_compare_ts(pkt->pts - os->first_pts, st->time_base,
                       seg_end_duration, AV_TIME_BASE_Q) >= 0) {
         int64_t prev_duration = c->last_duration;
 
-        c->last_duration = av_rescale_q(pkt->dts - os->start_dts,
+        c->last_duration = av_rescale_q(pkt->pts - os->start_pts,
                                         st->time_base,
                                         AV_TIME_BASE_Q);
-        c->total_duration = av_rescale_q(pkt->dts - os->first_dts,
+        c->total_duration = av_rescale_q(pkt->pts - os->first_pts,
                                          st->time_base,
                                          AV_TIME_BASE_Q);
 
@@ -733,8 +733,8 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
     }
 
     if (!os->packets_written)
-        os->start_dts = pkt->dts;
-    os->end_dts = pkt->dts + pkt->duration;
+        os->start_pts = pkt->pts;
+    os->max_pts = FFMAX(os->max_pts, pkt->pts + pkt->duration);
     os->packets_written++;
     return ff_write_chained(os->ctx, 0, pkt, s);
 }
@@ -748,10 +748,10 @@ static int dash_write_trailer(AVFormatContext *s)
         // If no segments have been written so far, try to do a crude
         // guess of the segment duration
         if (!c->last_duration)
-            c->last_duration = av_rescale_q(os->end_dts - os->start_dts,
+            c->last_duration = av_rescale_q(os->max_pts - os->start_pts,
                                             s->streams[0]->time_base,
                                             AV_TIME_BASE_Q);
-        c->total_duration = av_rescale_q(os->end_dts - os->first_dts,
+        c->total_duration = av_rescale_q(os->max_pts - os->first_pts,
                                          s->streams[0]->time_base,
                                          AV_TIME_BASE_Q);
     }
