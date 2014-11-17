@@ -732,8 +732,15 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
             return ret;
     }
 
-    if (!os->packets_written)
+    if (!os->packets_written) {
         os->start_pts = pkt->pts;
+        if (os->segment_index == 0 && s->avoid_negative_ts == AVFMT_AVOID_NEG_TS_MAKE_ZERO &&
+            c->use_template && c->use_timeline) {
+            // Newer dash.js versions have problems when the start pts
+            // isn't zero, even if using a proper Period start.
+            os->start_pts = os->first_pts = 0;
+        }
+    }
     os->max_pts = FFMAX(os->max_pts, pkt->pts + pkt->duration);
     os->packets_written++;
     return ff_write_chained(os->ctx, 0, pkt, s);
