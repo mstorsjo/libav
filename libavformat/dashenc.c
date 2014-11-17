@@ -275,12 +275,14 @@ static char *xmlescape(const char *str) {
     return out;
 }
 
-static void write_time(AVIOContext *out, int64_t time)
+static void write_time(AVIOContext *out, int64_t time, int decimals,
+                       enum AVRounding round)
 {
     int seconds = time / AV_TIME_BASE;
     int fractions = time % AV_TIME_BASE;
     int minutes = seconds / 60;
     int hours = minutes / 60;
+    fractions = av_rescale_rnd(fractions, pow(10, decimals), AV_TIME_BASE, round);
     seconds %= 60;
     minutes %= 60;
     avio_printf(out, "PT");
@@ -288,7 +290,7 @@ static void write_time(AVIOContext *out, int64_t time)
         avio_printf(out, "%dH", hours);
     if (hours || minutes)
         avio_printf(out, "%dM", minutes);
-    avio_printf(out, "%d.%dS", seconds, fractions / (AV_TIME_BASE / 10));
+    avio_printf(out, "%d.%0*dS", seconds, decimals, fractions);
 }
 
 static int write_manifest(AVFormatContext *s, int final)
@@ -314,7 +316,7 @@ static int write_manifest(AVFormatContext *s, int final)
                 "\ttype=\"%s\"\n", final ? "static" : "dynamic");
     if (final) {
         avio_printf(out, "\tmediaPresentationDuration=\"");
-        write_time(out, c->total_duration);
+        write_time(out, c->total_duration, 1, AV_ROUND_DOWN);
         avio_printf(out, "\"\n");
     } else {
         int update_period = c->last_duration / AV_TIME_BASE;
@@ -336,12 +338,12 @@ static int write_manifest(AVFormatContext *s, int final)
             avio_printf(out, "\tavailabilityStartTime=\"%s\"\n", c->availability_start_time);
         if (c->window_size && c->use_template) {
             avio_printf(out, "\ttimeShiftBufferDepth=\"");
-            write_time(out, c->last_duration * c->window_size);
+            write_time(out, c->last_duration * c->window_size, 1, AV_ROUND_DOWN);
             avio_printf(out, "\"\n");
         }
     }
     avio_printf(out, "\tminBufferTime=\"");
-    write_time(out, c->last_duration);
+    write_time(out, c->last_duration, 1, AV_ROUND_DOWN);
     avio_printf(out, "\">\n");
     avio_printf(out, "\t<ProgramInformation>\n");
     if (title) {
@@ -355,7 +357,7 @@ static int write_manifest(AVFormatContext *s, int final)
         int start_index = FFMAX(os->nb_segments - c->window_size, 0);
         int64_t start_time = av_rescale_q(os->segments[start_index]->time, s->streams[0]->time_base, AV_TIME_BASE_Q);
         avio_printf(out, "\t<Period start=\"");
-        write_time(out, start_time);
+        write_time(out, start_time, 1, AV_ROUND_UP);
         avio_printf(out, "\">\n");
     } else {
         avio_printf(out, "\t<Period start=\"PT0.0S\">\n");
