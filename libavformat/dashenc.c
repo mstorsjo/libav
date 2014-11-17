@@ -300,6 +300,7 @@ static int write_manifest(AVFormatContext *s, int final)
     char temp_filename[1024];
     int ret, i;
     AVDictionaryEntry *title = av_dict_get(s->metadata, "title", NULL, 0);
+    int64_t start_time;
 
     snprintf(temp_filename, sizeof(temp_filename), "%s.tmp", s->filename);
     ret = avio_open2(&out, temp_filename, AVIO_FLAG_WRITE, &s->interrupt_callback, NULL);
@@ -355,13 +356,23 @@ static int write_manifest(AVFormatContext *s, int final)
     if (c->window_size && s->nb_streams > 0 && c->streams[0].nb_segments > 0 && !c->use_template) {
         OutputStream *os = &c->streams[0];
         int start_index = FFMAX(os->nb_segments - c->window_size, 0);
-        int64_t start_time = av_rescale_q(os->segments[start_index]->time, s->streams[0]->time_base, AV_TIME_BASE_Q);
-        avio_printf(out, "\t<Period start=\"");
-        write_time(out, start_time, 1, AV_ROUND_UP);
-        avio_printf(out, "\">\n");
+        start_time = av_rescale_q(os->segments[start_index]->time, s->streams[0]->time_base, AV_TIME_BASE_Q);
+    } else if (c->use_template && c->use_timeline) {
+        start_time = 0;
+        for (i = 0; i < s->nb_streams; i++) {
+            if (c->streams[i].first_dts != AV_NOPTS_VALUE) {
+                start_time = FFMAX(start_time,
+                                   av_rescale_q_rnd(c->streams[i].first_dts,
+                                                    s->streams[i]->time_base,
+                                                    AV_TIME_BASE_Q, AV_ROUND_UP));
+            }
+        }
     } else {
-        avio_printf(out, "\t<Period start=\"PT0.0S\">\n");
+        start_time = 0;
     }
+    avio_printf(out, "\t<Period start=\"");
+    write_time(out, start_time, 3, AV_ROUND_UP);
+    avio_printf(out, "\">\n");
 
     if (c->has_video) {
         avio_printf(out, "\t\t<AdaptationSet id=\"video\" segmentAlignment=\"true\" bitstreamSwitching=\"true\">\n");
