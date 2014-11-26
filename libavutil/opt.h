@@ -31,6 +31,7 @@
 #include "avutil.h"
 #include "dict.h"
 #include "log.h"
+#include "version.h"
 
 /**
  * @defgroup avoptions AVOptions
@@ -448,7 +449,7 @@ const AVOption *av_opt_find2(void *obj, const char *name, const char *unit,
  *             or NULL
  * @return next AVOption or NULL
  */
-const AVOption *av_opt_next(void *obj, const AVOption *prev);
+const AVOption *av_opt_next(FF_CONST_AVUTIL55 void *obj, const AVOption *prev);
 
 /**
  * Iterate over AVOptions-enabled children of obj.
