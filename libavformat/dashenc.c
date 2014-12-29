@@ -94,6 +94,7 @@ typedef struct DASHContext {
     const char *single_file_name;
     const char *init_seg_name;
     const char *media_seg_name;
+    int skip_segments;
 } DASHContext;
 
 static int dash_write(void *opaque, uint8_t *buf, int buf_size)
@@ -634,7 +635,7 @@ static int dash_write_header(AVFormatContext *s)
             goto fail;
         os->init_start_pos = 0;
 
-        av_dict_set(&opts, "movflags", "frag_custom+dash+delay_moov", 0);
+        av_dict_set(&opts, "movflags", "frag_custom+dash+delay_moov+frag_discont", 0);
         if ((ret = avformat_write_header(ctx, &opts)) < 0) {
              goto fail;
         }
@@ -793,6 +794,11 @@ static int dash_flush(AVFormatContext *s, int final, int stream)
             if (c->has_video && os->segment_index > cur_flush_segment_index)
                 continue;
         }
+        if (os->segment_index <= c->skip_segments) {
+            os->packets_written = 0;
+            os->segment_index++;
+            continue;
+        }
 
         if (!os->init_range_length) {
             av_write_frame(os->ctx, NULL);
@@ -801,6 +807,7 @@ static int dash_flush(AVFormatContext *s, int final, int stream)
                 ffurl_close(os->out);
                 os->out = NULL;
             }
+            av_opt_set_int(os->ctx, "fragment_index", os->segment_index, AV_OPT_SEARCH_CHILDREN);
         }
 
         start_pos = avio_tell(os->ctx->pb);
@@ -890,8 +897,11 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
         pkt->dts  = 0;
     }
 
-    if (os->first_pts == AV_NOPTS_VALUE)
+    if (os->first_pts == AV_NOPTS_VALUE) {
         os->first_pts = pkt->pts;
+        av_opt_set_int(os->ctx->streams[0]->priv_data, "start_dts", pkt->dts, AV_OPT_SEARCH_CHILDREN);
+        av_opt_set_int(os->ctx->streams[0]->priv_data, "start_cts", pkt->pts - pkt->dts, AV_OPT_SEARCH_CHILDREN);
+    }
 
     if ((!c->has_video || st->codec->codec_type == AVMEDIA_TYPE_VIDEO) &&
         pkt->flags & AV_PKT_FLAG_KEY && os->packets_written &&
@@ -933,6 +943,8 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
     else
         os->max_pts = FFMAX(os->max_pts, pkt->pts + pkt->duration);
     os->packets_written++;
+    if (os->segment_index <= c->skip_segments)
+        return 0;
     return ff_write_chained(os->ctx, 0, pkt, s);
 }
 
@@ -982,6 +994,7 @@ static const AVOption options[] = {
     { "single_file_name", "DASH-templated name to be used for baseURL. Implies storing all segments in one file, accessed using byte ranges", OFFSET(single_file_name), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, E },
     { "init_seg_name", "DASH-templated name to used for the initialization segment", OFFSET(init_seg_name), AV_OPT_TYPE_STRING, {.str = "init-stream$RepresentationID$.m4s"}, 0, 0, E },
     { "media_seg_name", "DASH-templated name to used for the media segments", OFFSET(media_seg_name), AV_OPT_TYPE_STRING, {.str = "chunk-stream$RepresentationID$-$Number%05d$.m4s"}, 0, 0, E },
+    { "skip_segments", "Skip segments", OFFSET(skip_segments), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, E },
     { NULL },
 };
 
