@@ -472,6 +472,8 @@ typedef struct AVOutputFormat {
 
     const AVClass *priv_class; ///< AVClass for the private context
 
+    const AVClass *stream_priv_class; ///< AVClass for the stream private context
+
     /*****************************************************************
      * No fields below this line are part of the public API. They
      * may not be used outside of libavformat and can be changed and
@@ -484,6 +486,11 @@ typedef struct AVOutputFormat {
      * size of private data so that it can be allocated in the wrapper
      */
     int priv_data_size;
+
+    /**
+     * size of per-stream private data so that it can be allocated in the wrapper
+     */
+    int stream_priv_data_size;
 
     int (*write_header)(struct AVFormatContext *);
     /**

@@ -2458,6 +2458,9 @@ void avformat_free_context(AVFormatContext *s)
         /* free all data in a stream component */
         st = s->streams[i];
 
+        if (s->oformat && s->oformat->stream_priv_class && st->priv_data)
+            av_opt_free(st->priv_data);
+
         for (j = 0; j < st->nb_side_data; j++)
             av_freep(&st->side_data[j].data);
         av_freep(&st->side_data);
@@ -2535,6 +2538,19 @@ AVStream *avformat_new_stream(AVFormatContext *s, const AVCodec *c)
     if (!(st->info = av_mallocz(sizeof(*st->info))))
         goto fail;
 
+    if (s->oformat) {
+        if (s->oformat->stream_priv_data_size) {
+            st->priv_data = av_mallocz(s->oformat->stream_priv_data_size);
+            if (!st->priv_data)
+                goto fail;
+            if (s->oformat->stream_priv_class) {
+                *(const AVClass **) st->priv_data = s->oformat->stream_priv_class;
+                av_opt_set_defaults(st->priv_data);
+                // TODO: Allow passing a dict for setting options here?
+            }
+        }
+    }
+
     st->codec = avcodec_alloc_context3(c);
     if (!st->codec)
         goto fail;
@@ -2570,6 +2586,9 @@ AVStream *avformat_new_stream(AVFormatContext *s, const AVCodec *c)
     return st;
 
 fail:
+    if (s->oformat && s->oformat->stream_priv_class && st->priv_data)
+        av_opt_free(st->priv_data);
+    av_free(st->priv_data);
     av_free(st->info);
     av_free(st);
     return NULL;
