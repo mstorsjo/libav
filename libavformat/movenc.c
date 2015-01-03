@@ -3762,8 +3762,11 @@ static void mov_free(AVFormatContext *s)
     }
     for (i = 0; i < s->nb_streams; i++) {
         // This priv_data is a pointer into the mov->tracks array,
-        // make sure it isn't freed outside.
-        s->streams[i]->priv_data = NULL;
+        // make sure it isn't freed outside. If write_header failed
+        // halfway through, some of them can be pointers to separately
+        // allocated blocks, which we'll let the caller free.
+        if (s->streams[i]->priv_data == &mov->tracks[i])
+            s->streams[i]->priv_data = NULL;
     }
 
     av_freep(&mov->tracks);
@@ -3950,9 +3953,17 @@ static int mov_write_header(AVFormatContext *s)
         MOVTrack *track= &mov->tracks[i];
         AVDictionaryEntry *lang = av_dict_get(st->metadata, "language", NULL,0);
 
+        if (st->priv_data) {
+            // Priv data already allocated (and potentially initialized)
+            // by the caller. Since most of the code uses it via mov->tracks[i],
+            // copy it back there
+            memcpy(track, st->priv_data, sizeof(*track));
+            av_free(st->priv_data);
+        } else {
+            track->av_class = &track_class;
+            av_opt_set_defaults(track);
+        }
         st->priv_data = track;
-        track->av_class = &track_class;
-        av_opt_set_defaults(track);
         track->st  = st;
         track->enc = st->codec;
         track->language = ff_mov_iso639_to_lang(lang?lang->value:"und", mov->mode!=MODE_MOV);
@@ -4350,6 +4361,8 @@ AVOutputFormat ff_mp4_muxer = {
     .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE,
     .codec_tag         = (const AVCodecTag* const []){ ff_mp4_obj_type, 0 },
     .priv_class        = &mp4_muxer_class,
+    .stream_priv_class = &track_class,
+    .stream_priv_data_size = sizeof(MOVTrack),
 };
 #endif
 #if CONFIG_PSP_MUXER
