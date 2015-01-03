@@ -86,6 +86,19 @@ static const AVClass flavor ## _muxer_class = {\
     .version    = LIBAVUTIL_VERSION_INT,\
 };
 
+static const AVOption track_options[] = {
+    { "start_dts", "", offsetof(MOVTrack, start_dts), AV_OPT_TYPE_INT64, { .i64 = AV_NOPTS_VALUE }, INT64_MIN, INT64_MAX, AV_OPT_FLAG_ENCODING_PARAM },
+    { "start_cts", "", offsetof(MOVTrack, start_cts), AV_OPT_TYPE_INT64, { .i64 = AV_NOPTS_VALUE }, INT64_MIN, INT64_MAX, AV_OPT_FLAG_ENCODING_PARAM },
+    { NULL },
+};
+
+static const AVClass track_class = {
+    .class_name = "mov muxer track",
+    .item_name  = av_default_item_name,
+    .option     = track_options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
+
 static int utf8len(const uint8_t *b)
 {
     int len = 0;
@@ -3744,6 +3757,13 @@ static void mov_free(AVFormatContext *s)
 
         if (mov->tracks[i].vos_len)
             av_free(mov->tracks[i].vos_data);
+        if (mov->tracks[i].av_class)
+            av_opt_free(&mov->tracks[i]);
+    }
+    for (i = 0; i < s->nb_streams; i++) {
+        // This priv_data is a pointer into the mov->tracks array,
+        // make sure it isn't freed outside.
+        s->streams[i]->priv_data = NULL;
     }
 
     av_freep(&mov->tracks);
@@ -3930,6 +3950,9 @@ static int mov_write_header(AVFormatContext *s)
         MOVTrack *track= &mov->tracks[i];
         AVDictionaryEntry *lang = av_dict_get(st->metadata, "language", NULL,0);
 
+        st->priv_data = track;
+        track->av_class = &track_class;
+        av_opt_set_defaults(track);
         track->st  = st;
         track->enc = st->codec;
         track->language = ff_mov_iso639_to_lang(lang?lang->value:"und", mov->mode!=MODE_MOV);
@@ -3945,8 +3968,6 @@ static int mov_write_header(AVFormatContext *s)
         /* If hinting of this track is enabled by a later hint track,
          * this is updated. */
         track->hint_track = -1;
-        track->start_dts  = AV_NOPTS_VALUE;
-        track->start_cts  = AV_NOPTS_VALUE;
         track->end_pts    = AV_NOPTS_VALUE;
         if (st->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
             if (track->tag == MKTAG('m','x','3','p') || track->tag == MKTAG('m','x','3','n') ||

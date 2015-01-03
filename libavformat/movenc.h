@@ -77,6 +77,7 @@ typedef struct MOVFragmentInfo {
 } MOVFragmentInfo;
 
 typedef struct MOVTrack {
+    const AVClass *av_class;
     int         mode;
     int         entry;
     unsigned    timescale;
