@@ -2523,8 +2523,14 @@ void avformat_close_input(AVFormatContext **ps)
 
 AVStream *avformat_new_stream(AVFormatContext *s, const AVCodec *c)
 {
+    return avformat_new_stream2(s, c, NULL);
+}
+
+AVStream *avformat_new_stream2(AVFormatContext *s, const AVCodec *c, AVDictionary **options)
+{
     AVStream *st;
-    int i;
+    int i, ret;
+    AVDictionary *tmp = NULL;
 
     if (av_reallocp_array(&s->streams, s->nb_streams + 1,
                           sizeof(*s->streams)) < 0) {
@@ -2538,6 +2544,9 @@ AVStream *avformat_new_stream(AVFormatContext *s, const AVCodec *c)
     if (!(st->info = av_mallocz(sizeof(*st->info))))
         goto fail;
 
+    if (options)
+        av_dict_copy(&tmp, *options, 0);
+
     if (s->oformat) {
         if (s->oformat->stream_priv_data_size) {
             st->priv_data = av_mallocz(s->oformat->stream_priv_data_size);
@@ -2546,7 +2555,8 @@ AVStream *avformat_new_stream(AVFormatContext *s, const AVCodec *c)
             if (s->oformat->stream_priv_class) {
                 *(const AVClass **) st->priv_data = s->oformat->stream_priv_class;
                 av_opt_set_defaults(st->priv_data);
-                // TODO: Allow passing a dict for setting options here?
+                if ((ret = av_opt_set_dict(st->priv_data, &tmp)) < 0)
+                    goto fail;
             }
         }
     }
@@ -2583,11 +2593,18 @@ AVStream *avformat_new_stream(AVFormatContext *s, const AVCodec *c)
     st->info->fps_last_dts  = AV_NOPTS_VALUE;
 
     s->streams[s->nb_streams++] = st;
+
+    if (options) {
+        av_dict_free(options);
+        *options = tmp;
+    }
+
     return st;
 
 fail:
     if (s->oformat && s->oformat->stream_priv_class && st->priv_data)
         av_opt_free(st->priv_data);
+    av_dict_free(&tmp);
     av_free(st->priv_data);
     av_free(st->info);
     av_free(st);

@@ -1342,6 +1342,8 @@ const AVClass *avformat_get_class(void);
  */
 AVStream *avformat_new_stream(AVFormatContext *s, const AVCodec *c);
 
+AVStream *avformat_new_stream2(AVFormatContext *s, const AVCodec *c, AVDictionary **options);
+
 /**
  * Get side information from stream.
  *
