@@ -2532,17 +2532,12 @@ AVStream *avformat_new_stream(AVFormatContext *s, const AVCodec *c)
     st = av_mallocz(sizeof(AVStream));
     if (!st)
         return NULL;
-    if (!(st->info = av_mallocz(sizeof(*st->info)))) {
-        av_free(st);
-        return NULL;
-    }
+    if (!(st->info = av_mallocz(sizeof(*st->info))))
+        goto fail;
 
     st->codec = avcodec_alloc_context3(c);
-    if (!st->codec) {
-        av_free(st->info);
-        av_free(st);
-        return NULL;
-    }
+    if (!st->codec)
+        goto fail;
     if (s->iformat) {
         /* no default bitrate if decoding */
         st->codec->bit_rate = 0;
@@ -2573,6 +2568,11 @@ AVStream *avformat_new_stream(AVFormatContext *s, const AVCodec *c)
 
     s->streams[s->nb_streams++] = st;
     return st;
+
+fail:
+    av_free(st->info);
+    av_free(st);
+    return NULL;
 }
 
 AVProgram *av_new_program(AVFormatContext *ac, int id)
