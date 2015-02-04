@@ -19,15 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "config.h"
-
-#if CONFIG_OMX_RPI
-#define OMX_SKIP64BIT
-#endif
-
-#include <dlfcn.h>
-#include <OMX_Core.h>
-#include <OMX_Component.h>
+#include "omx_core.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,23 +37,6 @@
 #include "h264.h"
 #include "internal.h"
 
-#ifdef OMX_SKIP64BIT
-static OMX_TICKS to_omx_ticks(int64_t value)
-{
-    OMX_TICKS s;
-    s.nLowPart  = value & 0xffffffff;
-    s.nHighPart = value >> 32;
-    return s;
-}
-static int64_t from_omx_ticks(OMX_TICKS value)
-{
-    return (((int64_t)value.nHighPart) << 32) | value.nLowPart;
-}
-#else
-#define to_omx_ticks(x) (x)
-#define from_omx_ticks(x) (x)
-#endif
-
 #define INIT_STRUCT(x) do {                                               \
         x.nSize = sizeof(x);                                              \
         x.nVersion = s->version;                                          \
@@ -74,144 +49,6 @@ static int64_t from_omx_ticks(OMX_TICKS value)
         }                                                                 \
     } while (0)
 
-#define OMX_QCOM_COLOR_FormatYVU420SemiPlanar 0x7FA30C00
-#define OMX_TI_COLOR_FormatYUV420PackedSemiPlanar 0x7F000100
-
-typedef struct OMXContext {
-    int users;
-    void *lib;
-    void *lib2;
-    OMX_ERRORTYPE (*ptr_Init)(void);
-    OMX_ERRORTYPE (*ptr_Deinit)(void);
-    OMX_ERRORTYPE (*ptr_ComponentNameEnum)(OMX_STRING, OMX_U32, OMX_U32);
-    OMX_ERRORTYPE (*ptr_GetHandle)(OMX_HANDLETYPE*, OMX_STRING, OMX_PTR, OMX_CALLBACKTYPE*);
-    OMX_ERRORTYPE (*ptr_FreeHandle)(OMX_HANDLETYPE);
-    OMX_ERRORTYPE (*ptr_GetComponentsOfRole)(OMX_STRING, OMX_U32*, OMX_U8**);
-    OMX_ERRORTYPE (*ptr_GetRolesOfComponent)(OMX_STRING, OMX_U32*, OMX_U8**);
-    void (*host_init)(void);
-} OMXContext;
-
-static OMXContext *omx_context;
-static pthread_mutex_t omx_context_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-static av_cold void *dlsym_prefixed(void *handle, const char *symbol, const char *prefix)
-{
-    char buf[50];
-    snprintf(buf, sizeof(buf), "%s%s", prefix ? prefix : "", symbol);
-    return dlsym(handle, buf);
-}
-
-static av_cold int omx_try_load(void *logctx,
-                                const char *libname, const char *prefix,
-                                const char *libname2)
-{
-    OMXContext *s = omx_context;
-    if (libname2) {
-        s->lib2 = dlopen(libname2, RTLD_NOW | RTLD_GLOBAL);
-        if (!s->lib2) {
-            av_log(logctx, AV_LOG_WARNING, "%s not found\n", libname);
-            return AVERROR_ENCODER_NOT_FOUND;
-        }
-        s->host_init = dlsym(s->lib2, "bcm_host_init");
-        if (!s->host_init) {
-            av_log(logctx, AV_LOG_WARNING, "bcm_host_init not found\n");
-            dlclose(s->lib2);
-            s->lib2 = NULL;
-            return AVERROR_ENCODER_NOT_FOUND;
-        }
-    }
-    s->lib = dlopen(libname, RTLD_NOW | RTLD_GLOBAL);
-    if (!s->lib) {
-        av_log(logctx, AV_LOG_WARNING, "%s not found\n", libname);
-        return AVERROR_ENCODER_NOT_FOUND;
-    }
-    s->ptr_Init                = dlsym_prefixed(s->lib, "OMX_Init", prefix);
-    s->ptr_Deinit              = dlsym_prefixed(s->lib, "OMX_Deinit", prefix);
-    s->ptr_ComponentNameEnum   = dlsym_prefixed(s->lib, "OMX_ComponentNameEnum", prefix);
-    s->ptr_GetHandle           = dlsym_prefixed(s->lib, "OMX_GetHandle", prefix);
-    s->ptr_FreeHandle          = dlsym_prefixed(s->lib, "OMX_FreeHandle", prefix);
-    s->ptr_GetComponentsOfRole = dlsym_prefixed(s->lib, "OMX_GetComponentsOfRole", prefix);
-    s->ptr_GetRolesOfComponent = dlsym_prefixed(s->lib, "OMX_GetRolesOfComponent", prefix);
-    if (!s->ptr_Init || !s->ptr_Deinit || !s->ptr_ComponentNameEnum ||
-        !s->ptr_GetHandle || !s->ptr_FreeHandle ||
-        !s->ptr_GetComponentsOfRole || !s->ptr_GetRolesOfComponent) {
-        av_log(logctx, AV_LOG_WARNING, "Not all functions found in %s\n", libname);
-        dlclose(s->lib);
-        s->lib = NULL;
-        if (s->lib2)
-            dlclose(s->lib2);
-        s->lib2 = NULL;
-        return AVERROR_ENCODER_NOT_FOUND;
-    }
-    return 0;
-}
-
-static av_cold int omx_init(void *logctx, const char *libname, const char *prefix)
-{
-    static const char * const libnames[] = {
-#if CONFIG_OMX_RPI
-        "/opt/vc/lib/libopenmaxil.so", "/opt/vc/lib/libbcm_host.so",
-#else
-        "libOMX_Core.so", NULL,
-        "libOmxCore.so", NULL,
-        "libomxil-bellagio.so", NULL,
-#endif
-        NULL
-    };
-    const char* const* nameptr;
-    int ret = AVERROR_ENCODER_NOT_FOUND;
-
-    pthread_mutex_lock(&omx_context_mutex);
-    if (omx_context) {
-        omx_context->users++;
-        pthread_mutex_unlock(&omx_context_mutex);
-        return 0;
-    }
-
-    omx_context = av_mallocz(sizeof(*omx_context));
-    if (!omx_context) {
-        pthread_mutex_unlock(&omx_context_mutex);
-        return AVERROR(ENOMEM);
-    }
-    omx_context->users = 1;
-    if (libname) {
-        ret = omx_try_load(logctx, libname, prefix, NULL);
-        if (ret < 0) {
-            pthread_mutex_unlock(&omx_context_mutex);
-            return ret;
-        }
-    } else {
-        for (nameptr = libnames; *nameptr; nameptr += 2)
-            if (!(ret = omx_try_load(logctx, nameptr[0], prefix, nameptr[1])))
-                break;
-        if (!*nameptr) {
-            pthread_mutex_unlock(&omx_context_mutex);
-            return ret;
-        }
-    }
-
-    if (omx_context->host_init)
-        omx_context->host_init();
-    omx_context->ptr_Init();
-    pthread_mutex_unlock(&omx_context_mutex);
-    return 0;
-}
-
-static av_cold void omx_deinit(void)
-{
-    pthread_mutex_lock(&omx_context_mutex);
-    if (!omx_context) {
-        pthread_mutex_unlock(&omx_context_mutex);
-        return;
-    }
-    omx_context->users--;
-    if (!omx_context->users) {
-        omx_context->ptr_Deinit();
-        dlclose(omx_context->lib);
-        av_freep(&omx_context);
-    }
-    pthread_mutex_unlock(&omx_context_mutex);
-}
 
 typedef struct OMXCodecContext {
     const AVClass *class;
@@ -401,7 +238,7 @@ static av_cold int find_component(void *logctx, const char *role, char *str,
         return 0;
     }
 #endif
-    omx_context->ptr_GetComponentsOfRole((OMX_STRING) role, &num, NULL);
+    ff_omx_context->ptr_GetComponentsOfRole((OMX_STRING) role, &num, NULL);
     if (!num) {
         av_log(logctx, AV_LOG_WARNING, "No component for role %s found\n", role);
         return AVERROR_ENCODER_NOT_FOUND;
@@ -416,7 +253,7 @@ static av_cold int find_component(void *logctx, const char *role, char *str,
             goto end;
         }
     }
-    omx_context->ptr_GetComponentsOfRole((OMX_STRING) role, &num, (OMX_U8**) components);
+    ff_omx_context->ptr_GetComponentsOfRole((OMX_STRING) role, &num, (OMX_U8**) components);
     av_strlcpy(str, components[0], str_size);
 end:
 /*
@@ -526,7 +363,7 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
     if (!av_strstart(s->component_name, "OMX.st.", NULL))
         s->version.s.nRevision = 2;
 
-    err = omx_context->ptr_GetHandle(&s->handle, s->component_name, s, (OMX_CALLBACKTYPE*) &callbacks);
+    err = ff_omx_context->ptr_GetHandle(&s->handle, s->component_name, s, (OMX_CALLBACKTYPE*) &callbacks);
     if (err != OMX_ErrorNone) {
         av_log(avctx, AV_LOG_ERROR, "OMX_GetHandle(%s) failed: %x\n", s->component_name, err);
         return AVERROR_UNKNOWN;
@@ -780,12 +617,12 @@ static av_cold void cleanup(OMXCodecContext *s)
         wait_for_state(s, OMX_StateLoaded);
     }
     if (s->handle) {
-        omx_context->ptr_FreeHandle(s->handle);
+        ff_omx_context->ptr_FreeHandle(s->handle);
         s->handle = NULL;
     }
 
     if (s->omx_inited)
-        omx_deinit();
+        ff_omx_deinit();
     s->omx_inited = 0;
     if (s->mutex_cond_inited) {
         pthread_cond_destroy(&s->state_cond);
@@ -818,7 +655,7 @@ static av_cold void omx_encode_init_static(AVCodec *codec)
     if (omx_encoder_static_inited)
         return;
     /* Note, we can't pass parameters about which lib to use here */
-    if (!omx_init(NULL, NULL, NULL)) {
+    if (!ff_omx_init(NULL, NULL, NULL)) {
         char component_name[128];
         if (!find_component(NULL, "video_encoder.avc", component_name, sizeof(component_name))) {
             OMX_VERSIONTYPE version = { { 0 } };
@@ -833,7 +670,7 @@ static av_cold void omx_encode_init_static(AVCodec *codec)
             version.s.nVersionMinor = 1;
             version.s.nRevision     = 2;
 
-            err = omx_context->ptr_GetHandle(&handle, component_name, NULL, (OMX_CALLBACKTYPE*) &callbacks);
+            err = ff_omx_context->ptr_GetHandle(&handle, component_name, NULL, (OMX_CALLBACKTYPE*) &callbacks);
             if (err != OMX_ErrorNone) {
                 av_log(NULL, AV_LOG_ERROR, "OMX_GetHandle(%s) failed: %x\n", component_name, err);
                 goto end;
@@ -892,9 +729,9 @@ static av_cold void omx_encode_init_static(AVCodec *codec)
 
 end:
             if (handle)
-                omx_context->ptr_FreeHandle(handle);
+                ff_omx_context->ptr_FreeHandle(handle);
         }
-        omx_deinit();
+        ff_omx_deinit();
     }
     omx_encoder_static_inited = 1;
 }
@@ -911,7 +748,7 @@ static av_cold int omx_encode_init(AVCodecContext *avctx)
     s->input_zerocopy = 1;
 #endif
 
-    if ((ret = omx_init(avctx, s->libname, s->libprefix)) < 0)
+    if ((ret = ff_omx_init(avctx, s->libname, s->libprefix)) < 0)
         return ret;
     s->omx_inited = 1;
 
@@ -1216,7 +1053,7 @@ static av_cold int omx_decode_init(AVCodecContext *avctx)
 
     s->output_zerocopy = 1;
 
-    if ((ret = omx_init(avctx, s->libname, s->libprefix)) < 0)
+    if ((ret = ff_omx_init(avctx, s->libname, s->libprefix)) < 0)
         return ret;
 
     pthread_mutex_init(&s->state_mutex, NULL);

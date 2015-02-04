@@ -261,8 +261,8 @@ OBJS-$(CONFIG_H264_DECODER)            += h264dec.o h264_cabac.o h264_cavlc.o \
                                           h264_slice.o h264data.o
 OBJS-$(CONFIG_H264_MMAL_DECODER)       += mmaldec.o
 OBJS-$(CONFIG_H264_NVENC_ENCODER)      += nvenc_h264.o
-OBJS-$(CONFIG_H264_OMX_DECODER)        += omx.o
-OBJS-$(CONFIG_H264_OMX_ENCODER)        += omx.o
+OBJS-$(CONFIG_H264_OMX_DECODER)        += omx.o omx_core.o
+OBJS-$(CONFIG_H264_OMX_ENCODER)        += omx.o omx_core.o
 OBJS-$(CONFIG_H264_QSV_DECODER)        += qsvdec_h2645.o
 OBJS-$(CONFIG_H264_QSV_ENCODER)        += qsvenc_h264.o
 OBJS-$(CONFIG_H264_VAAPI_ENCODER)      += vaapi_encode_h264.o vaapi_encode_h26x.o
@@ -340,8 +340,8 @@ OBJS-$(CONFIG_MPEG2VIDEO_ENCODER)      += mpeg12enc.o mpeg12.o
 OBJS-$(CONFIG_MPEG2_MMAL_DECODER)      += mmaldec.o
 OBJS-$(CONFIG_MPEG2_VAAPI_ENCODER)     += vaapi_encode_mpeg2.o
 OBJS-$(CONFIG_MPEG4_DECODER)           += xvididct.o
-OBJS-$(CONFIG_MPEG4_OMX_DECODER)       += omx.o
-OBJS-$(CONFIG_MPEG4_OMX_ENCODER)       += omx.o
+OBJS-$(CONFIG_MPEG4_OMX_DECODER)       += omx.o omx_core.o
+OBJS-$(CONFIG_MPEG4_OMX_ENCODER)       += omx.o omx_core.o
 OBJS-$(CONFIG_MSA1_DECODER)            += mss3.o
 OBJS-$(CONFIG_MSMPEG4V1_DECODER)       += msmpeg4dec.o msmpeg4.o msmpeg4data.o
 OBJS-$(CONFIG_MSMPEG4V2_DECODER)       += msmpeg4dec.o msmpeg4.o msmpeg4data.o
@@ -469,7 +469,7 @@ OBJS-$(CONFIG_VC1_DECODER)             += vc1dec.o vc1_block.o vc1_loopfilter.o 
                                           msmpeg4dec.o msmpeg4.o msmpeg4data.o \
                                           wmv2data.o
 OBJS-$(CONFIG_VC1_MMAL_DECODER)        += mmaldec.o
-OBJS-$(CONFIG_VC1_OMX_DECODER)         += omx.o
+OBJS-$(CONFIG_VC1_OMX_DECODER)         += omx.o omx_core.o
 OBJS-$(CONFIG_VC1_QSV_DECODER)         += qsvdec_other.o
 OBJS-$(CONFIG_VCR1_DECODER)            += vcr1.o
 OBJS-$(CONFIG_VMDAUDIO_DECODER)        += vmdaudio.o
@@ -506,7 +506,7 @@ OBJS-$(CONFIG_WMV2_DECODER)            += wmv2dec.o wmv2.o wmv2data.o \
                                           msmpeg4dec.o msmpeg4.o msmpeg4data.o
 OBJS-$(CONFIG_WMV2_ENCODER)            += wmv2enc.o wmv2.o wmv2data.o \
                                           msmpeg4.o msmpeg4enc.o msmpeg4data.o
-OBJS-$(CONFIG_WMV3_OMX_DECODER)        += omx.o
+OBJS-$(CONFIG_WMV3_OMX_DECODER)        += omx.o omx_core.o
 OBJS-$(CONFIG_WNV1_DECODER)            += wnv1.o
 OBJS-$(CONFIG_WRAPPED_AVFRAME_ENCODER) += wrapped_avframe.o
 OBJS-$(CONFIG_WS_SND1_DECODER)         += ws-snd1.o
