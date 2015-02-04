@@ -30,6 +30,8 @@ OBJS-$(CONFIG_XCBGRAB_INDEV)             += xcbgrab.o
 OBJS-$(CONFIG_LIBCDIO_INDEV)             += libcdio.o
 OBJS-$(CONFIG_LIBDC1394_INDEV)           += libdc1394.o
 
+OBJS-$(CONFIG_OMX_CAMERA_INDEV)          += omx_camera.o
+
 SKIPHEADERS-$(HAVE_ALSA)                 += alsa.h
 SKIPHEADERS-$(HAVE_SNDIO)                += sndio.h
 

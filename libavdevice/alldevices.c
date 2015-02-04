@@ -53,6 +53,7 @@ void avdevice_register_all(void)
     REGISTER_INDEV   (DV1394,           dv1394);
     REGISTER_INDEV   (FBDEV,            fbdev);
     REGISTER_INDEV   (JACK,             jack);
+    REGISTER_INDEV   (OMX_CAMERA,       omx_camera);
     REGISTER_INOUTDEV(OSS,              oss);
     REGISTER_INDEV   (PULSE,            pulse);
     REGISTER_INOUTDEV(SNDIO,            sndio);
