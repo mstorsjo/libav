@@ -189,7 +189,7 @@ static int tls_open(URLContext *h, const char *uri, int flags, AVDictionary **op
     }
 
     ret = ffurl_open(&c->tcp, buf, AVIO_FLAG_READ_WRITE,
-                     &h->interrupt_callback, options);
+                     &h->interrupt_callback, options, h);
     if (ret)
         goto fail;
     c->fd = ffurl_get_file_handle(c->tcp);

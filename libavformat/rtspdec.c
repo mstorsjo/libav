@@ -294,7 +294,7 @@ static int rtsp_read_setup(AVFormatContext *s, char* host, char *controlurl)
             ff_url_join(url, sizeof(url), "rtp", NULL, host, localport, NULL);
             av_log(s, AV_LOG_TRACE, "Opening: %s", url);
             ret = ffurl_open(&rtsp_st->rtp_handle, url, AVIO_FLAG_READ_WRITE,
-                             &s->interrupt_callback, &opts);
+                             &s->interrupt_callback, &opts, NULL);
             av_dict_free(&opts);
             if (ret)
                 localport += 2;
@@ -659,7 +659,7 @@ static int rtsp_listen(AVFormatContext *s)
                 "?listen&listen_timeout=%d", rt->initial_timeout * 1000);
 
     if (ret = ffurl_open(&rt->rtsp_hd, tcpname, AVIO_FLAG_READ_WRITE,
-                         &s->interrupt_callback, NULL)) {
+                         &s->interrupt_callback, NULL, NULL)) {
         av_log(s, AV_LOG_ERROR, "Unable to open RTSP for listening\n");
         return ret;
     }

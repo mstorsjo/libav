@@ -121,7 +121,7 @@ static int64_t ism_seek(void *opaque, int64_t offset, int whence)
             AVDictionary *opts = NULL;
             os->tail_out = os->out;
             av_dict_set(&opts, "truncate", "0", 0);
-            ret = ffurl_open(&os->out, frag->file, AVIO_FLAG_READ_WRITE, &os->ctx->interrupt_callback, &opts);
+            ret = ffurl_open(&os->out, frag->file, AVIO_FLAG_READ_WRITE, &os->ctx->interrupt_callback, &opts, NULL);
             av_dict_free(&opts);
             if (ret < 0) {
                 os->out = os->tail_out;
@@ -129,7 +129,7 @@ static int64_t ism_seek(void *opaque, int64_t offset, int whence)
                 return ret;
             }
             av_dict_set(&opts, "truncate", "0", 0);
-            ffurl_open(&os->out2, frag->infofile, AVIO_FLAG_READ_WRITE, &os->ctx->interrupt_callback, &opts);
+            ffurl_open(&os->out2, frag->infofile, AVIO_FLAG_READ_WRITE, &os->ctx->interrupt_callback, &opts, NULL);
             av_dict_free(&opts);
             ffurl_seek(os->out, offset - frag->start_pos, SEEK_SET);
             if (os->out2)
@@ -523,7 +523,7 @@ static int ism_flush(AVFormatContext *s, int final)
             continue;
 
         snprintf(filename, sizeof(filename), "%s/temp", os->dirname);
-        ret = ffurl_open(&os->out, filename, AVIO_FLAG_WRITE, &s->interrupt_callback, NULL);
+        ret = ffurl_open(&os->out, filename, AVIO_FLAG_WRITE, &s->interrupt_callback, NULL, NULL);
         if (ret < 0)
             break;
         os->cur_start_pos = os->tail_pos;

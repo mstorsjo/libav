@@ -1138,7 +1138,7 @@ static int rtmp_calc_swfhash(URLContext *s)
 
     /* Get the SWF player file. */
     if ((ret = ffurl_open(&stream, rt->swfverify, AVIO_FLAG_READ,
-                          &s->interrupt_callback, NULL)) < 0) {
+                          &s->interrupt_callback, NULL, s)) < 0) {
         av_log(s, AV_LOG_ERROR, "Cannot open connection %s.\n", rt->swfverify);
         goto fail;
     }
@@ -2659,7 +2659,7 @@ static int rtmp_open(URLContext *s, const char *uri, int flags)
 
 reconnect:
     if ((ret = ffurl_open(&rt->stream, buf, AVIO_FLAG_READ_WRITE,
-                          &s->interrupt_callback, &opts)) < 0) {
+                          &s->interrupt_callback, &opts, s)) < 0) {
         av_log(s , AV_LOG_ERROR, "Cannot open connection %s\n", buf);
         goto fail;
     }
