@@ -720,6 +720,7 @@ OBJS-$(CONFIG_LIBXAVS_ENCODER)            += libxavs.o
 OBJS-$(CONFIG_LIBXVID_ENCODER)            += libxvid.o
 
 OBJS-$(CONFIG_OMX_CAMERA_INDEV)           += omx_core.o
+OBJS-$(CONFIG_OMX_RENDER_OUTDEV)          += omx_core.o
 
 # parsers
 OBJS-$(CONFIG_AAC_LATM_PARSER)         += latm_parser.o
