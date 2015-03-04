@@ -1139,10 +1139,11 @@ static int omx_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             }
             if (buffer->nFlags & OMX_BUFFERFLAG_ENDOFFRAME) {
                 pkt->pts = av_rescale_q(from_omx_ticks(buffer->nTimeStamp), AV_TIME_BASE_Q, avctx->time_base);
-                // We don't currently enable B-frames for the encoders, so set
-                // pkt->dts = pkt->pts. (The calling code behaves worse if the encoder
-                // doesn't set the dts).
-                pkt->dts = pkt->pts;
+                // The broadcom encoder on raspberry pi doesn't produce b-frames, so
+                // we can safely set dts = pts (the calling code behaves a bit worse
+                // if the encoder doesn't set dts).
+                if (av_strstart(s->component_name, "OMX.broadcom.video_encode", NULL))
+                    pkt->dts = pkt->pts;
                 if (buffer->nFlags & OMX_BUFFERFLAG_SYNCFRAME)
                     pkt->flags |= AV_PKT_FLAG_KEY;
                 *got_packet = 1;
