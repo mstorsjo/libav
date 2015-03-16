@@ -177,6 +177,30 @@ static av_cold int wait_for_port_event(OMXCameraContext *s, int enabled)
     return ret;
 }
 
+#define CHECK(x) do { if (x != OMX_ErrorNone) { av_log(s1, AV_LOG_ERROR, "err %x (%d) on line %d\n", x, x, __LINE__); return AVERROR_ENCODER_NOT_FOUND; } } while (0)
+
+static int fill_buffer(AVFormatContext *s1, OMX_BUFFERHEADERTYPE *buf)
+{
+    OMXCameraContext *s = s1->priv_data;
+    AVPacket *pkt;
+    int ret;
+    OMX_ERRORTYPE err;
+
+    pkt = av_malloc(sizeof(*pkt));
+    if (!pkt)
+        return AVERROR(ENOMEM);
+    ret = av_new_packet(pkt, buf->nAllocLen);
+    if (ret < 0) {
+        av_free(pkt);
+        return ret;
+    }
+    buf->pAppPrivate = pkt;
+    buf->pBuffer = pkt->data;
+    err = OMX_FillThisBuffer(s->handle, buf);
+    CHECK(err);
+    return 0;
+}
+
 static av_cold int omx_component_init(AVFormatContext *s1)
 {
     OMXCameraContext *s = s1->priv_data;
@@ -206,7 +230,6 @@ static av_cold int omx_component_init(AVFormatContext *s1)
         return AVERROR_ENCODER_NOT_FOUND;
     }
 
-#define CHECK(x) do { if (x != OMX_ErrorNone) { av_log(s1, AV_LOG_ERROR, "err %x (%d) on line %d\n", x, x, __LINE__); return AVERROR_ENCODER_NOT_FOUND; } } while (0)
 /*
     INIT_STRUCT(request_callback);
     request_callback.nPortIndex = OMX_ALL;
@@ -286,8 +309,12 @@ static av_cold int omx_component_init(AVFormatContext *s1)
 
     s->out_buffer_headers = av_mallocz(sizeof(OMX_BUFFERHEADERTYPE*) * s->num_out_buffers);
     s->done_out_buffers   = av_mallocz(sizeof(OMX_BUFFERHEADERTYPE*) * s->num_out_buffers);
-    for (i = 0; i < s->num_out_buffers && err == OMX_ErrorNone; i++)
-        err = OMX_AllocateBuffer(s->handle, &s->out_buffer_headers[i], s->out_port, s, out_port_params.nBufferSize);
+    for (i = 0; i < s->num_out_buffers && err == OMX_ErrorNone; i++) {
+        err = OMX_UseBuffer(s->handle, &s->out_buffer_headers[i], s->out_port, s, out_port_params.nBufferSize, NULL);
+        if (err == OMX_ErrorNone) {
+            s->out_buffer_headers[i]->pAppPrivate = NULL;
+        }
+    }
     CHECK(err);
     s->num_out_buffers = i;
 
@@ -302,8 +329,11 @@ static av_cold int omx_component_init(AVFormatContext *s1)
         return AVERROR_ENCODER_NOT_FOUND;
     }
 
-    for (i = 0; i < s->num_out_buffers; i++)
-        err = OMX_FillThisBuffer(s->handle, s->out_buffer_headers[i]);
+    for (i = 0; i < s->num_out_buffers; i++) {
+        ret = fill_buffer(s1, s->out_buffer_headers[i]);
+        if (ret < 0)
+            return ret;
+    }
     return 0;
 }
 
@@ -322,6 +352,11 @@ static av_cold void cleanup(OMXCameraContext *s)
         for (i = 0; i < s->num_out_buffers; i++) {
             OMX_BUFFERHEADERTYPE *buffer = get_buffer(&s->output_mutex, &s->output_cond,
                                                       &s->num_done_out_buffers, s->done_out_buffers, 1);
+            if (buffer->pAppPrivate) {
+                av_free_packet((AVPacket*) buffer->pAppPrivate);
+                av_free(buffer->pAppPrivate);
+                buffer->pBuffer = NULL;
+            }
             OMX_FreeBuffer(s->handle, s->out_port, buffer);
         }
         wait_for_state(s, OMX_StateLoaded);
@@ -414,7 +449,7 @@ static int omx_reconfigure_out(AVFormatContext *s1)
     OMXCameraContext *s = s1->priv_data;
     OMX_PARAM_PORTDEFINITIONTYPE out_port_params = { 0 };
     OMX_ERRORTYPE err;
-    int i;
+    int i, ret;
 
     err = OMX_SendCommand(s->handle, OMX_CommandPortDisable, s->out_port, NULL);
     CHECK(err);
@@ -422,6 +457,11 @@ static int omx_reconfigure_out(AVFormatContext *s1)
     for (i = 0; i < s->num_out_buffers; i++) {
         OMX_BUFFERHEADERTYPE *buffer = get_buffer(&s->output_mutex, &s->output_cond,
                                                   &s->num_done_out_buffers, s->done_out_buffers, 1);
+        if (buffer->pAppPrivate) {
+            av_free_packet((AVPacket*) buffer->pAppPrivate);
+            av_free(buffer->pAppPrivate);
+            buffer->pBuffer = NULL;
+        }
         OMX_FreeBuffer(s->handle, s->out_port, buffer);
     }
 
@@ -447,16 +487,23 @@ static int omx_reconfigure_out(AVFormatContext *s1)
     s->out_buffer_headers = av_mallocz(sizeof(OMX_BUFFERHEADERTYPE*) * s->num_out_buffers);
     s->done_out_buffers   = av_mallocz(sizeof(OMX_BUFFERHEADERTYPE*) * s->num_out_buffers);
 
-    for (i = 0; i < s->num_out_buffers && err == OMX_ErrorNone; i++)
-        err = OMX_AllocateBuffer(s->handle, &s->out_buffer_headers[i], s->out_port, s, out_port_params.nBufferSize);
+    for (i = 0; i < s->num_out_buffers && err == OMX_ErrorNone; i++) {
+        err = OMX_UseBuffer(s->handle, &s->out_buffer_headers[i], s->out_port, s, out_port_params.nBufferSize, NULL);
+        if (err == OMX_ErrorNone) {
+            s->out_buffer_headers[i]->pAppPrivate = NULL;
+        }
+    }
     CHECK(err);
     s->num_out_buffers = i;
 
     if (wait_for_port_event(s, 1))
         return AVERROR_INVALIDDATA;
 
-    for (i = 0; i < s->num_out_buffers; i++)
-        OMX_FillThisBuffer(s->handle, s->out_buffer_headers[i]);
+    for (i = 0; i < s->num_out_buffers; i++) {
+        ret = fill_buffer(s1, s->out_buffer_headers[i]);
+        if (ret < 0)
+            return ret;
+    }
 
     omx_update_out_def(s1);
     return 0;
@@ -466,11 +513,7 @@ static int omx_camera_frame(AVFormatContext *s1, AVPacket *pkt)
 {
     OMXCameraContext *s = s1->priv_data;
     OMX_BUFFERHEADERTYPE *buffer;
-    AVStream *st = s1->streams[0];
-    int ret;
-    uint8_t *src[4], *dst[4];
-    int src_linesize[4], dst_linesize[4];
-    int size;
+    AVPacket *bufpkt;
 
 start:
     pthread_mutex_lock(&s->output_mutex);
@@ -499,22 +542,14 @@ start:
     }
     pthread_mutex_unlock(&s->output_mutex);
 
-    size = av_image_fill_arrays(dst, dst_linesize, NULL, st->codecpar->format, st->codecpar->width, st->codecpar->height, 1);
-    ret = av_new_packet(pkt, size);
-    if (ret < 0) {
-        OMX_FillThisBuffer(s->handle, buffer);
-        return ret;
-    }
-    av_image_fill_arrays(dst, dst_linesize, pkt->data, st->codecpar->format, st->codecpar->width, st->codecpar->height, 1);
-
-    s->num_out_frames++;
-    av_image_fill_arrays(src, src_linesize, buffer->pBuffer + buffer->nOffset, st->codecpar->format, s->stride, s->plane_size, 1);
-    av_image_copy(dst, dst_linesize, (const uint8_t**) src, src_linesize, st->codecpar->format, st->codecpar->width, st->codecpar->height);
+    bufpkt = (AVPacket*) buffer->pAppPrivate;
+    *pkt = *bufpkt;
+    av_free(bufpkt);
     pkt->stream_index = 0;
 
 //    pkt->pts = from_omx_ticks(buffer->nTimeStamp);
     pkt->dts = pkt->pts = av_gettime_relative();
-    OMX_FillThisBuffer(s->handle, buffer);
+    fill_buffer(s1, buffer);
 
     return 0;
 }
