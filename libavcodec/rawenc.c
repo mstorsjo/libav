@@ -57,6 +57,14 @@ static int raw_encode(AVCodecContext *avctx, AVPacket *pkt,
     if (ret < 0)
         return ret;
 
+    if (frame->buf[0] && !frame->buf[1] && !frame->buf[2] &&
+        frame->linesize[0] == avctx->width && frame->linesize[1] == avctx->width/2 &&
+        frame->data[0] + avctx->width*avctx->height == frame->data[1] &&
+        frame->data[1] + avctx->width*avctx->height/4) {
+        pkt->buf = av_buffer_ref(frame->buf[0]);
+        pkt->data = pkt->buf->data;
+        pkt->size = avctx->width*avctx->height*3/2;
+    } else {
     if ((ret = ff_alloc_packet(pkt, ret)) < 0)
         return ret;
     if ((ret = av_image_copy_to_buffer(pkt->data, pkt->size,
@@ -64,6 +72,7 @@ static int raw_encode(AVCodecContext *avctx, AVPacket *pkt,
                                        frame->format,
                                        frame->width, frame->height, 1)) < 0)
         return ret;
+    }
 
     if(avctx->codec_tag == AV_RL32("yuv2") && ret > 0 &&
        avctx->pix_fmt   == AV_PIX_FMT_YUYV422) {
