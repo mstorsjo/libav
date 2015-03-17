@@ -183,7 +183,6 @@ typedef struct OMXCodecContext {
     char *libprefix;
 
     AVCodecContext *avctx;
-    AVFrame frame;
 
     char component_name[OMX_MAX_STRINGNAME_SIZE];
     OMX_VERSIONTYPE version;
@@ -922,8 +921,7 @@ retry:
         res = s->output_buf_size + buffer->nFilledLen;
         av_freep(&s->output_buf);
         s->output_buf_size = 0;
-        avctx->coded_frame = &s->frame;
-        pkt->pts = avctx->coded_frame->pts = av_rescale_q(fromOmxTicks(buffer->nTimeStamp), AV_TIME_BASE_Q, avctx->time_base);
+        pkt->pts = av_rescale_q(fromOmxTicks(buffer->nTimeStamp), AV_TIME_BASE_Q, avctx->time_base);
         // The broadcom encoder on raspberry pi doesn't produce b-frames, so
         // we can safely set dts = pts (the calling code behaves a bit worse
         // if the encoder doesn't set dts).
