@@ -220,6 +220,8 @@ typedef struct OMXCodecContext {
 
     uint8_t *output_buf;
     int output_buf_size;
+
+    int input_zerocopy, output_zerocopy;
 } OMXCodecContext;
 
 static OMX_ERRORTYPE eventHandler(OMX_HANDLETYPE component, OMX_PTR app_data, OMX_EVENTTYPE event, OMX_U32 data1, OMX_U32 data2, OMX_PTR event_data)
@@ -386,6 +388,24 @@ static av_cold int wait_for_port_event(OMXCodecContext *s, int enabled)
     return ret;
 }
 
+#define CHECK(x) do { if (x != OMX_ErrorNone) { av_log(avctx, AV_LOG_ERROR, "err %x (%d) on line %d\n", x, x, __LINE__); return AVERROR_ENCODER_NOT_FOUND; } } while (0)
+
+static int fill_buffer(AVCodecContext *avctx, OMX_BUFFERHEADERTYPE *buffer)
+{
+    OMXCodecContext *s = avctx->priv_data;
+    OMX_ERRORTYPE err;
+    if (s->output_zerocopy) {
+        AVBufferRef *buf = av_buffer_alloc(buffer->nAllocLen);
+        if (!buf)
+            return AVERROR(ENOMEM);
+        buffer->pAppPrivate = buf;
+        buffer->pBuffer = buf->data;
+    }
+    err = OMX_FillThisBuffer(s->handle, buffer);
+    CHECK(err);
+    return 0;
+}
+
 static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, int encode)
 {
     OMXCodecContext *s = avctx->priv_data;
@@ -417,7 +437,6 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
     OMX_SetParameter(s->handle, OMX_IndexParamStandardComponentRole, &role_params);
 
     INIT_STRUCT(video_port_params);
-#define CHECK(x) do { if (x != OMX_ErrorNone) { av_log(avctx, AV_LOG_ERROR, "err %x (%d) on line %d\n", x, x, __LINE__); return AVERROR_ENCODER_NOT_FOUND; } } while (0)
     err = OMX_GetParameter(s->handle, OMX_IndexParamVideoInit, &video_port_params);
     CHECK(err);
 
@@ -557,12 +576,24 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
     s->free_in_buffers    = av_mallocz(sizeof(OMX_BUFFERHEADERTYPE*) * s->num_in_buffers);
     s->out_buffer_headers = av_mallocz(sizeof(OMX_BUFFERHEADERTYPE*) * s->num_out_buffers);
     s->done_out_buffers   = av_mallocz(sizeof(OMX_BUFFERHEADERTYPE*) * s->num_out_buffers);
-    for (i = 0; i < s->num_in_buffers && err == OMX_ErrorNone; i++)
-        err = OMX_AllocateBuffer(s->handle, &s->in_buffer_headers[i],  s->in_port,  s, in_port_params.nBufferSize);
+    for (i = 0; i < s->num_in_buffers && err == OMX_ErrorNone; i++) {
+        if (s->input_zerocopy)
+            err = OMX_UseBuffer(s->handle, &s->in_buffer_headers[i], s->in_port, s, in_port_params.nBufferSize, NULL);
+        else
+            err = OMX_AllocateBuffer(s->handle, &s->in_buffer_headers[i],  s->in_port,  s, in_port_params.nBufferSize);
+        if (err == OMX_ErrorNone)
+            s->in_buffer_headers[i]->pAppPrivate = s->in_buffer_headers[i]->pOutputPortPrivate = NULL;
+    }
     CHECK(err);
     s->num_in_buffers = i;
-    for (i = 0; i < s->num_out_buffers && err == OMX_ErrorNone; i++)
-        err = OMX_AllocateBuffer(s->handle, &s->out_buffer_headers[i], s->out_port, s, out_port_params.nBufferSize);
+    for (i = 0; i < s->num_out_buffers && err == OMX_ErrorNone; i++) {
+        if (s->output_zerocopy)
+            err = OMX_UseBuffer(s->handle, &s->out_buffer_headers[i], s->out_port, s, out_port_params.nBufferSize, NULL);
+        else
+            err = OMX_AllocateBuffer(s->handle, &s->out_buffer_headers[i], s->out_port, s, out_port_params.nBufferSize);
+        if (err == OMX_ErrorNone)
+            s->out_buffer_headers[i]->pAppPrivate = NULL;
+    }
     CHECK(err);
     s->num_out_buffers = i;
 
@@ -578,7 +609,7 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
     }
 
     for (i = 0; i < s->num_out_buffers; i++)
-        OMX_FillThisBuffer(s->handle, s->out_buffer_headers[i]);
+        fill_buffer(avctx, s->out_buffer_headers[i]);
     for (i = 0; i < s->num_in_buffers; i++)
         s->free_in_buffers[s->num_free_in_buffers++] = s->in_buffer_headers[i];
     return 0;
@@ -605,6 +636,13 @@ static av_cold void cleanup(OMXCodecContext *s)
             s->num_free_in_buffers--;
             memmove(&s->free_in_buffers[0], &s->free_in_buffers[1], s->num_free_in_buffers * sizeof(OMX_BUFFERHEADERTYPE*));
             pthread_mutex_unlock(&s->input_mutex);
+            if (s->input_zerocopy && buffer->pAppPrivate) {
+                if (buffer->pOutputPortPrivate)
+                    av_free(buffer->pAppPrivate);
+                else
+                    av_frame_free((AVFrame**)&buffer->pAppPrivate);
+                buffer->pBuffer = NULL;
+            }
             OMX_FreeBuffer(s->handle, s->in_port, buffer);
         }
         for (i = 0; i < s->num_out_buffers; i++) {
@@ -616,6 +654,10 @@ static av_cold void cleanup(OMXCodecContext *s)
             s->num_done_out_buffers--;
             memmove(&s->done_out_buffers[0], &s->done_out_buffers[1], s->num_done_out_buffers * sizeof(OMX_BUFFERHEADERTYPE*));
             pthread_mutex_unlock(&s->output_mutex);
+            if (s->output_zerocopy && buffer->pAppPrivate) {
+                av_buffer_unref((AVBufferRef**)&buffer->pAppPrivate);
+                buffer->pBuffer = NULL;
+            }
             OMX_FreeBuffer(s->handle, s->out_port, buffer);
         }
         wait_for_state(s, OMX_StateLoaded);
@@ -675,6 +717,8 @@ static av_cold int omx_encode_init(AVCodecContext *avctx)
     int ret = AVERROR_ENCODER_NOT_FOUND;
     const char *role;
     OMX_BUFFERHEADERTYPE *buffer;
+
+    s->input_zerocopy = 1;
 
     if ((ret = omx_init(avctx, s->libname, s->libprefix)) < 0)
         return ret;
@@ -755,19 +799,13 @@ static int omx_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t *ptr;
 
     if (frame) {
-        int chroma_linesize, chroma_stride;
+        int chroma_linesize, chroma_stride, need_copy;
         pthread_mutex_lock(&s->input_mutex);
         while (!s->num_free_in_buffers)
             pthread_cond_wait(&s->input_cond, &s->input_mutex);
         buffer = s->free_in_buffers[--s->num_free_in_buffers];
         pthread_mutex_unlock(&s->input_mutex);
 
-        ptr = buffer->pBuffer;
-        for (i = 0; i < avctx->height; i++) {
-            memcpy(ptr, frame->data[0] + i*frame->linesize[0], avctx->width);
-            ptr += s->stride;
-        }
-        ptr += s->stride * (s->plane_size - avctx->height);
         if (avctx->pix_fmt == AV_PIX_FMT_NV12 || avctx->pix_fmt == AV_PIX_FMT_NV21) {
             chroma_linesize = avctx->width;
             chroma_stride = s->stride;
@@ -775,6 +813,44 @@ static int omx_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             chroma_linesize = avctx->width/2;
             chroma_stride = s->stride/2;
         }
+
+        if (s->input_zerocopy) {
+            if (buffer->pAppPrivate) {
+                if (buffer->pOutputPortPrivate)
+                    av_free(buffer->pAppPrivate);
+                else
+                    av_frame_free((AVFrame**)&buffer->pAppPrivate);
+            }
+            // YUV420P only right now
+            if (frame->buf[0] && !frame->buf[1] && !frame->buf[2] &&
+                frame->linesize[0] == s->stride &&
+                frame->linesize[1] == chroma_stride &&
+                frame->data[0] + s->plane_size*s->stride == frame->data[1] &&
+                frame->data[1] + s->plane_size/2*chroma_stride == frame->data[2]) {
+                AVFrame *local = av_frame_clone(frame);
+                // TODO error handling
+                buffer->pAppPrivate = local;
+                buffer->pOutputPortPrivate = NULL;
+                buffer->pBuffer = local->data[0];
+                need_copy = 0;
+            } else {
+                uint8_t *buf = av_malloc(s->stride*s->plane_size*3/2);
+                // TODO error handling
+                buffer->pAppPrivate = buf;
+                buffer->pOutputPortPrivate = (void*) 1;
+                buffer->pBuffer = buf;
+                need_copy = 1;
+            }
+        } else {
+            need_copy = 1;
+        }
+        if (need_copy) {
+        ptr = buffer->pBuffer;
+        for (i = 0; i < avctx->height; i++) {
+            memcpy(ptr, frame->data[0] + i*frame->linesize[0], avctx->width);
+            ptr += s->stride;
+        }
+        ptr += s->stride * (s->plane_size - avctx->height);
         for (i = 0; i < avctx->height/2; i++) {
             memcpy(ptr, frame->data[1] + i*frame->linesize[1], chroma_linesize);
             ptr += chroma_stride;
@@ -785,6 +861,7 @@ static int omx_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                 memcpy(ptr, frame->data[2] + i*frame->linesize[2], chroma_linesize);
                 ptr += chroma_stride;
             }
+        }
         }
         buffer->nFilledLen = s->stride*s->plane_size + 2*s->stride/2*s->plane_size/2;
         buffer->nFlags = OMX_BUFFERFLAG_ENDOFFRAME;
@@ -930,6 +1007,8 @@ static av_cold int omx_decode_init(AVCodecContext *avctx)
     int ret = AVERROR_ENCODER_NOT_FOUND;
     const char *role;
 
+    s->output_zerocopy = 1;
+
     if ((ret = omx_init(avctx, s->libname, s->libprefix)) < 0)
         return ret;
 
@@ -1065,6 +1144,10 @@ static int omx_reconfigure_out(AVCodecContext *avctx)
         buffer = s->done_out_buffers[s->num_done_out_buffers - 1];
         s->num_done_out_buffers--;
         pthread_mutex_unlock(&s->output_mutex);
+        if (s->output_zerocopy && buffer->pAppPrivate) {
+            av_buffer_unref((AVBufferRef**)&buffer->pAppPrivate);
+            buffer->pBuffer = NULL;
+        }
         OMX_FreeBuffer(s->handle, s->out_port, buffer);
         pthread_mutex_lock(&s->output_mutex);
     }
@@ -1104,7 +1187,7 @@ static int omx_reconfigure_out(AVCodecContext *avctx)
         return AVERROR_INVALIDDATA;
 
     for (i = 0; i < s->num_out_buffers; i++)
-        OMX_FillThisBuffer(s->handle, s->out_buffer_headers[i]);
+        fill_buffer(avctx, s->out_buffer_headers[i]);
 
     omx_update_out_def(avctx);
     return 0;
@@ -1188,6 +1271,17 @@ start:
         const uint8_t *ptr, *chroma;
         AVFrame *frame = data;
         int i, stride = s->stride, width = avctx->width;
+        if (s->output_zerocopy) {
+            AVBufferRef *buf = buffer->pAppPrivate;
+            frame->buf[0] = buf;
+            // YUV420P only
+            frame->data[0] = buf->data;
+            frame->data[1] = frame->data[0] + s->stride*s->plane_size;
+            frame->data[2] = frame->data[1] + s->stride*s->plane_size/4;
+            frame->linesize[0] = s->stride;
+            frame->linesize[1] = s->stride/2;
+            frame->linesize[2] = s->stride/2;
+        } else {
         if (ff_get_buffer(avctx, frame, 0) < 0) {
             av_log(avctx, AV_LOG_ERROR, "reget_buffer() failed\n");
             return -1;
@@ -1214,11 +1308,12 @@ start:
                 ptr += stride;
             }
         }
+        }
 
         frame->pts = frame->pkt_pts = fromOmxTicks(buffer->nTimeStamp);
         frame->pkt_dts = AV_NOPTS_VALUE;
         *got_frame = 1;
-        OMX_FillThisBuffer(s->handle, buffer);
+        fill_buffer(avctx, buffer);
     }
     if (avpkt && avpkt->data && s->bsfc)
         av_free(avpkt->data);
