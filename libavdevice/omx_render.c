@@ -124,6 +124,11 @@ static OMX_ERRORTYPE event_handler(OMX_HANDLETYPE component, OMX_PTR app_data, O
 static OMX_ERRORTYPE empty_buffer_done(OMX_HANDLETYPE component, OMX_PTR app_data, OMX_BUFFERHEADERTYPE *buffer)
 {
     OMXRenderContext *s = app_data;
+    if (buffer->pAppPrivate) {
+        av_buffer_unref((AVBufferRef**)&buffer->pAppPrivate);
+        buffer->pAppPrivate = NULL;
+    }
+
     append_buffer(&s->input_mutex, &s->input_cond,
                   &s->num_free_in_buffers, s->free_in_buffers, buffer);
     return OMX_ErrorNone;
@@ -243,8 +248,11 @@ static av_cold int omx_component_init(AVFormatContext *s1)
 
     s->in_buffer_headers = av_mallocz(sizeof(OMX_BUFFERHEADERTYPE*) * s->num_in_buffers);
     s->free_in_buffers   = av_mallocz(sizeof(OMX_BUFFERHEADERTYPE*) * s->num_in_buffers);
-    for (i = 0; i < s->num_in_buffers && err == OMX_ErrorNone; i++)
-        err = OMX_AllocateBuffer(s->handle, &s->in_buffer_headers[i], s->in_port, s, in_port_params.nBufferSize);
+    for (i = 0; i < s->num_in_buffers && err == OMX_ErrorNone; i++) {
+        err = OMX_UseBuffer(s->handle, &s->in_buffer_headers[i], s->in_port, s, in_port_params.nBufferSize, NULL);
+        if (err == OMX_ErrorNone)
+            s->in_buffer_headers[i]->pAppPrivate = NULL;
+    }
     CHECK(err);
     s->num_in_buffers = i;
 
@@ -364,10 +372,22 @@ static int omx_render_frame(AVFormatContext *s1, AVPacket *pkt)
                         &s->num_free_in_buffers, s->free_in_buffers, 1);
 
     s->num_in_frames++;
+
+
+    if (pkt->buf) {
+        AVBufferRef *buf = av_buffer_ref(pkt->buf);
+        buffer->pAppPrivate = buf;
+        buffer->pBuffer = buf->data;
+        buffer->nFilledLen = pkt->size;
+    } else {
+        AVBufferRef *buf = av_buffer_alloc(buffer->nAllocLen);
+        buffer->pAppPrivate = buf;
+        buffer->pBuffer = buf->data;
+
     av_image_fill_arrays(src, src_linesize, NULL, st->codecpar->format, st->codecpar->width, st->codecpar->height, 1);
     buffer->nFilledLen = av_image_fill_arrays(dst, dst_linesize, buffer->pBuffer + buffer->nOffset, st->codecpar->format, s->stride, s->plane_size, 1);
     av_image_copy(dst, dst_linesize, (const uint8_t**) src, src_linesize, st->codecpar->format, st->codecpar->width, st->codecpar->height);
-
+    }
     buffer->nOffset = 0;
     buffer->nFlags = OMX_BUFFERFLAG_ENDOFFRAME;
     buffer->nTimeStamp = to_omx_ticks(0);
