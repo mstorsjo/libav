@@ -3915,6 +3915,7 @@ EOF
     enabled vfpv3   && check_insn vfpv3   'vmov.f32 s0, #1.0'
 
     [ $target_os = linux ] || [ $target_os = android ] ||
+    [ $target_os = netbsd ] ||
         map 'enabled_any ${v}_external ${v}_inline || disable $v' \
             $ARCH_EXT_LIST_ARM
 

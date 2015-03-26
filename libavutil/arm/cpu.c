@@ -134,6 +134,33 @@ int ff_get_cpu_flags_arm(void)
     return flags;
 }
 
+#elif defined __NetBSD__
+
+#include <sys/param.h>
+#include <sys/sysctl.h>
+
+int ff_get_cpu_flags_arm(void)
+{
+    int flags = CORE_CPU_FLAGS;
+
+#define check_sysctl(name, flag) do {                                      \
+        int value;                                                         \
+        size_t len = sizeof(value);                                        \
+        if (!sysctlbyname(name, &value, &len, NULL, 0) && value)           \
+            flags |= AV_CPU_FLAG_ ## flag;                                 \
+    } while (0)
+
+    check_sysctl("machdep.neon_present",    NEON);
+    check_sysctl("machdep.simdex_present",  ARMV6);
+    check_sysctl("machdep.fpu_present",     VFP);
+
+    /* Add other implied flags that we don't have sysctls to check for. */
+    if (flags & AV_CPU_FLAG_NEON)
+        flags |= AV_CPU_FLAG_ARMV6T2 | AV_CPU_FLAG_VFPV3;
+
+    return flags;
+}
+
 #else
 
 int ff_get_cpu_flags_arm(void)
