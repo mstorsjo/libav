@@ -636,8 +636,12 @@ static void try_find_duration(AVFormatContext *s)
     // Read the last 4 bytes of the file, this should be the size of the
     // previous FLV tag. Use the timestamp of its payload as duration.
     const int64_t fsize = avio_size(s->pb);
+    if (fsize < 0)
+        return;
     avio_seek(s->pb, fsize - 4, SEEK_SET);
     size = avio_rb32(s->pb);
+    if (size < 0 || size + 4 >= fsize)
+        goto end;
     // Seek to the start of the last FLV tag at position (fsize - 4 - size)
     // but skip the byte indicating the type.
     avio_seek(s->pb, fsize - 3 - size, SEEK_SET);
@@ -646,6 +650,7 @@ static void try_find_duration(AVFormatContext *s)
         ts         |= avio_r8(s->pb) << 24;
         s->duration = ts * (int64_t)AV_TIME_BASE / 1000;
     }
+end:
     avio_seek(s->pb, pos, SEEK_SET);
 }
 
