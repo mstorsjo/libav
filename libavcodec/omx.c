@@ -522,7 +522,7 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
         out_port_params.format.video.nSliceHeight = 0;
         // The qcom OMX component doesn't accept any framerate (25 isn't supported), only certain (at least 15 and 30),
         // so ask for 30 and adjust the bitrate accordingly
-        out_port_params.format.video.nBitrate = avctx->bit_rate * 30 * avctx->time_base.num / avctx->time_base.den;
+        out_port_params.format.video.nBitrate = avctx->bit_rate;
         if (!ducati)
             out_port_params.format.video.xFramerate = 30 << 16;
         if (!strcmp(s->component_name, "OMX.st.video_encoder"))
@@ -548,7 +548,7 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
         INIT_STRUCT(vid_param_bitrate);
         vid_param_bitrate.nPortIndex = s->out_port;
         vid_param_bitrate.eControlRate = OMX_Video_ControlRateVariable;
-        vid_param_bitrate.nTargetBitrate = avctx->bit_rate * 30 / avctx->time_base.den;
+        vid_param_bitrate.nTargetBitrate = avctx->bit_rate;
         err = OMX_SetParameter(s->handle, OMX_IndexParamVideoBitrate, &vid_param_bitrate);
 //        CHECK(err);
 
