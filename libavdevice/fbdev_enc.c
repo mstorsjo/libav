@@ -95,6 +95,7 @@ static av_cold int fbdev_write_header(AVFormatContext *h)
         av_log(h, AV_LOG_ERROR, "Error in mmap(): %s\n", errbuf);
         goto fail;
     }
+    memset(fbdev->data, 0, fbdev->fixinfo.smem_len);
 
     return 0;
   fail:
@@ -139,6 +140,9 @@ static int fbdev_write_packet(AVFormatContext *h, AVPacket *pkt)
     pout = fbdev->data +
            bytes_per_pixel * fbdev->varinfo.xoffset +
            fbdev->varinfo.yoffset * fbdev->fixinfo.line_length;
+
+    fbdev->xoffset = (fbdev->varinfo.xres - video_width)/2;
+    fbdev->yoffset = (fbdev->varinfo.yres - video_height)/2;
 
     if (fbdev->xoffset) {
         if (fbdev->xoffset < 0) {
