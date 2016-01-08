@@ -18,6 +18,7 @@
 
 #include "libavutil/cpu.h"
 #include "libavutil/cpu_internal.h"
+#include "libavutil/arm/cpu.h"
 #include "config.h"
 
 #define CORE_FLAG(f) \
@@ -30,6 +31,8 @@
      CORE_FLAG(VFP)     |                       \
      CORE_FLAG(VFPV3)   |                       \
      CORE_FLAG(NEON))
+
+int ff_vfp_vm_test(void);
 
 #if defined __linux__ || defined __ANDROID__
 
@@ -101,7 +104,7 @@ static int get_cpuinfo(uint32_t *hwcap)
     return 0;
 }
 
-int ff_get_cpu_flags_arm(void)
+static int get_cpu_flags_arm_internal(void)
 {
     int flags = CORE_CPU_FLAGS;
     uint32_t hwcap;
@@ -131,16 +134,12 @@ int ff_get_cpu_flags_arm(void)
     if (flags & AV_CPU_FLAG_ARMV6T2)
         flags |= AV_CPU_FLAG_ARMV6;
 
-    /* set the virtual VFPv2 vector mode flag */
-    if ((flags & AV_CPU_FLAG_VFP) && !(flags & (AV_CPU_FLAG_VFPV3 | AV_CPU_FLAG_NEON)))
-        flags |= AV_CPU_FLAG_VFP_VM;
-
     return flags;
 }
 
 #else
 
-int ff_get_cpu_flags_arm(void)
+static int get_cpu_flags_arm_internal(void)
 {
     return AV_CPU_FLAG_ARMV5TE * HAVE_ARMV5TE |
            AV_CPU_FLAG_ARMV6   * HAVE_ARMV6   |
@@ -151,3 +150,13 @@ int ff_get_cpu_flags_arm(void)
 }
 
 #endif
+
+int ff_get_cpu_flags_arm(void)
+{
+    int flags = get_cpu_flags_arm_internal();
+    if (have_vfp(flags) && ff_vfp_vm_test())
+        flags |= AV_CPU_FLAG_VFP_VM;
+    // TODO: Remove the debug fprintf
+    fprintf(stderr, "ff_vfp_vm_test ret %d\n", ff_vfp_vm_test());
+    return flags;
+}
