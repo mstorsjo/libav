@@ -154,6 +154,7 @@ static av_cold int omx_init(void *logctx, const char *libname, const char *prefi
 #else
         "libOMX_Core.so", NULL,
         "libOmxCore.so", NULL,
+        "libomxil-bellagio.so", NULL,
 #endif
         NULL
     };
@@ -602,6 +603,8 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
             in_port_params.format.video.nStride = -1;
             in_port_params.format.video.nSliceHeight = -1;
         }
+        if (!strcmp(s->component_name, "OMX.st.video_encoder"))
+            in_port_params.format.video.xFramerate >>= 16;
     } else {
         if (avctx->codec->id == AV_CODEC_ID_MPEG4)
             in_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingMPEG4;
@@ -646,6 +649,8 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
         out_port_params.format.video.nBitrate = avctx->bit_rate * 30 * avctx->time_base.num / avctx->time_base.den;
         if (!ducati)
             out_port_params.format.video.xFramerate = 30 << 16;
+        if (!strcmp(s->component_name, "OMX.st.video_encoder"))
+            out_port_params.format.video.xFramerate >>= 16;
     }
     out_port_params.format.video.bFlagErrorConcealment  = OMX_FALSE;
     if (encode) {
