@@ -522,8 +522,9 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
     int ducati = !!strstr(s->component_name, "OMX.TI.DUCATI1.");
 
     s->version.s.nVersionMajor = 1;
-    s->version.s.nVersionMinor = 1;
-    s->version.s.nRevision     = 2;
+    s->version.s.nVersionMinor = 1; // Required by Bellagio, set to 0 for other uses
+    if (!av_strstart(s->component_name, "OMX.st.", NULL))
+        s->version.s.nRevision = 2;
 
     err = omx_context->ptr_GetHandle(&s->handle, s->component_name, s, (OMX_CALLBACKTYPE*) &callbacks);
     if (err != OMX_ErrorNone) {
