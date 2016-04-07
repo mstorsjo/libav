@@ -26,3 +26,5 @@ fdc08ccfb9ca1a7a63a8e82a99e28e83 1207 delay-moov-elst-init-discont
 13b8487a4f004ec9f1db543aee1e5e18 704 delay-moov-elst-signal-second-frag-discont
 5e676152714f9478b5f74ce67cd7ed60 3647 vfr
 5e676152714f9478b5f74ce67cd7ed60 3647 vfr-noduration
+4c5b22acc450f885159fc6039617dac1 2603 delay-moov-elst-neg-cts
+7b08009448dee645f56f2c98b2f3a598 2847 empty-moov-neg-cts
