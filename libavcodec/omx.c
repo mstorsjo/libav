@@ -421,12 +421,26 @@ end:
     return ret;
 }
 
+static av_cold void timed_wait(pthread_cond_t *cond, pthread_mutex_t *mutex, int ms)
+{
+    struct timeval tv;
+    struct timespec ts;
+    int64_t nsec;
+    gettimeofday(&tv, NULL);
+    ts.tv_sec = tv.tv_sec;
+    ts.tv_nsec = tv.tv_usec * 1000;
+    nsec = ts.tv_nsec + ms * 1000000LL;
+    ts.tv_sec += nsec / 1000000000;
+    ts.tv_nsec = nsec % 1000000000;
+    pthread_cond_timedwait(cond, mutex, &ts);
+}
+
 static av_cold int wait_for_state(OMXCodecContext *s, OMX_STATETYPE state)
 {
     int ret = 0;
     pthread_mutex_lock(&s->state_mutex);
     while (s->state != state && s->error == OMX_ErrorNone)
-        pthread_cond_wait(&s->state_cond, &s->state_mutex);
+        timed_wait(&s->state_cond, &s->state_mutex, 50);
     if (s->error != OMX_ErrorNone)
         ret = AVERROR_ENCODER_NOT_FOUND;
     pthread_mutex_unlock(&s->state_mutex);
@@ -438,7 +452,7 @@ static av_cold int wait_for_port_event(OMXCodecContext *s, int enabled)
     int ret = 0;
     pthread_mutex_lock(&s->state_mutex);
     while (((enabled && !s->enabled) || (!enabled && !s->disabled)) && s->error == OMX_ErrorNone)
-        pthread_cond_wait(&s->state_cond, &s->state_mutex);
+        timed_wait(&s->state_cond, &s->state_mutex, 50);
     if (s->error != OMX_ErrorNone)
         ret = AVERROR_INVALIDDATA;
     if (enabled)
