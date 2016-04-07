@@ -4083,8 +4083,6 @@ static int mov_write_header(AVFormatContext *s)
         }
     }
 
-    avio_flush(pb);
-
     if (mov->flags & FF_MOV_FLAG_ISML)
         mov_write_isml_manifest(pb, mov);
 

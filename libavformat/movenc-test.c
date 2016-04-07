@@ -69,6 +69,7 @@ enum AVPictureType last_picture;
 int skip_write;
 int skip_write_audio;
 int clear_duration;
+int fake_seekable;
 
 int num_warnings;
 
@@ -154,7 +155,10 @@ static void init_fps(int bf, int audio_preroll, int fps)
     ctx->pb = avio_alloc_context(iobuf, sizeof(iobuf), AVIO_FLAG_WRITE, NULL, NULL, io_write, NULL);
     if (!ctx->pb)
         exit(1);
+    if (fake_seekable)
+        ctx->pb->seekable = AVIO_SEEKABLE_NORMAL;
     ctx->flags |= AVFMT_FLAG_BITEXACT;
+    ctx->flags &= ~AVFMT_FLAG_FLUSH_PACKETS;
 
     st = avformat_new_stream(ctx, NULL);
     if (!st)
@@ -665,6 +669,25 @@ int main(int argc, char **argv)
     clear_duration = 0;
     reset_count_warnings();
     check(num_warnings > 0, "No warnings printed for filled in durations");
+
+    fake_seekable = 1;
+    // Write a non-fragmented file with b-frames and audio preroll.
+    init_out("ctts");
+    init(1, 1);
+    mux_gops(2);
+    finish();
+    close_out();
+
+    // Write a non-fragmented file with b-frames and audio preroll,
+    // with negative cts values, removing the edit list for the
+    // video track.
+    init_out("ctts-neg-cts");
+    av_dict_set(&opts, "movflags", "negative_cts_offsets", 0);
+    init(1, 1);
+    mux_gops(2);
+    finish();
+    close_out();
+    fake_seekable = 0;
 
     // Write a fragmented file with b-frames and audio preroll,
     // with negative cts values, removing the edit list for the
