@@ -74,6 +74,7 @@ static int64_t from_omx_ticks(OMX_TICKS value)
     } while (0)
 
 typedef struct OMXContext {
+    int users;
     void *lib;
     void *lib2;
     OMX_ERRORTYPE (*ptr_Init)(void);
@@ -86,6 +87,9 @@ typedef struct OMXContext {
     void (*host_init)(void);
 } OMXContext;
 
+static OMXContext *omx_context;
+static pthread_mutex_t omx_context_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static av_cold void *dlsym_prefixed(void *handle, const char *symbol, const char *prefix)
 {
     char buf[50];
@@ -93,10 +97,11 @@ static av_cold void *dlsym_prefixed(void *handle, const char *symbol, const char
     return dlsym(handle, buf);
 }
 
-static av_cold int omx_try_load(OMXContext *s, void *logctx,
+static av_cold int omx_try_load(void *logctx,
                                 const char *libname, const char *prefix,
                                 const char *libname2)
 {
+    OMXContext *s = omx_context;
     if (libname2) {
         s->lib2 = dlopen(libname2, RTLD_NOW | RTLD_GLOBAL);
         if (!s->lib2) {
@@ -137,7 +142,7 @@ static av_cold int omx_try_load(OMXContext *s, void *logctx,
     return 0;
 }
 
-static av_cold OMXContext *omx_init(void *logctx, const char *libname, const char *prefix)
+static av_cold int omx_init(void *logctx, const char *libname, const char *prefix)
 {
     static const char * const libnames[] = {
 #if CONFIG_OMX_RPI
@@ -150,47 +155,64 @@ static av_cold OMXContext *omx_init(void *logctx, const char *libname, const cha
     };
     const char* const* nameptr;
     int ret = AVERROR_ENCODER_NOT_FOUND;
-    OMXContext *omx_context;
+
+    pthread_mutex_lock(&omx_context_mutex);
+    if (omx_context) {
+        omx_context->users++;
+        pthread_mutex_unlock(&omx_context_mutex);
+        return 0;
+    }
 
     omx_context = av_mallocz(sizeof(*omx_context));
-    if (!omx_context)
-        return NULL;
+    if (!omx_context) {
+        pthread_mutex_unlock(&omx_context_mutex);
+        return AVERROR(ENOMEM);
+    }
+    omx_context->users = 1;
     if (libname) {
-        ret = omx_try_load(omx_context, logctx, libname, prefix, NULL);
+        ret = omx_try_load(logctx, libname, prefix, NULL);
         if (ret < 0) {
-            av_free(omx_context);
-            return NULL;
+            pthread_mutex_unlock(&omx_context_mutex);
+            return ret;
         }
     } else {
         for (nameptr = libnames; *nameptr; nameptr += 2)
-            if (!(ret = omx_try_load(omx_context, logctx, nameptr[0], prefix, nameptr[1])))
+            if (!(ret = omx_try_load(logctx, nameptr[0], prefix, nameptr[1])))
                 break;
         if (!*nameptr) {
-            av_free(omx_context);
-            return NULL;
+            pthread_mutex_unlock(&omx_context_mutex);
+            return ret;
         }
     }
 
     if (omx_context->host_init)
         omx_context->host_init();
     omx_context->ptr_Init();
-    return omx_context;
+    pthread_mutex_unlock(&omx_context_mutex);
+    return 0;
 }
 
-static av_cold void omx_deinit(OMXContext *omx_context)
+static av_cold void omx_deinit(void)
 {
-    if (!omx_context)
+    pthread_mutex_lock(&omx_context_mutex);
+    if (!omx_context) {
+        pthread_mutex_unlock(&omx_context_mutex);
         return;
-    omx_context->ptr_Deinit();
-    dlclose(omx_context->lib);
-    av_free(omx_context);
+    }
+    omx_context->users--;
+    if (!omx_context->users) {
+        omx_context->ptr_Deinit();
+        dlclose(omx_context->lib);
+        av_freep(&omx_context);
+    }
+    pthread_mutex_unlock(&omx_context_mutex);
 }
 
 typedef struct OMXCodecContext {
     const AVClass *class;
     char *libname;
     char *libprefix;
-    OMXContext *omx_context;
+    int omx_inited;
 
     AVCodecContext *avctx;
 
@@ -334,8 +356,8 @@ static const OMX_CALLBACKTYPE callbacks = {
     fill_buffer_done
 };
 
-static av_cold int find_component(OMXContext *omx_context, void *logctx,
-                                  const char *role, char *str, int str_size)
+static av_cold int find_component(void *logctx, const char *role, char *str,
+                                  int str_size)
 {
     OMX_U32 i, num = 0;
     char **components;
@@ -398,7 +420,7 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role)
     s->version.s.nVersionMinor = 1;
     s->version.s.nRevision     = 2;
 
-    err = s->omx_context->ptr_GetHandle(&s->handle, s->component_name, s, (OMX_CALLBACKTYPE*) &callbacks);
+    err = omx_context->ptr_GetHandle(&s->handle, s->component_name, s, (OMX_CALLBACKTYPE*) &callbacks);
     if (err != OMX_ErrorNone) {
         av_log(avctx, AV_LOG_ERROR, "OMX_GetHandle(%s) failed: %x\n", s->component_name, err);
         return AVERROR_UNKNOWN;
@@ -600,12 +622,13 @@ static av_cold void cleanup(OMXCodecContext *s)
         wait_for_state(s, OMX_StateLoaded);
     }
     if (s->handle) {
-        s->omx_context->ptr_FreeHandle(s->handle);
+        omx_context->ptr_FreeHandle(s->handle);
         s->handle = NULL;
     }
 
-    omx_deinit(s->omx_context);
-    s->omx_context = NULL;
+    if (s->omx_inited)
+        omx_deinit();
+    s->omx_inited = 0;
     if (s->mutex_cond_inited) {
         pthread_cond_destroy(&s->state_cond);
         pthread_mutex_destroy(&s->state_mutex);
@@ -634,9 +657,9 @@ static av_cold int omx_encode_init(AVCodecContext *avctx)
     s->input_zerocopy = 1;
 #endif
 
-    s->omx_context = omx_init(avctx, s->libname, s->libprefix);
-    if (!s->omx_context)
-        return AVERROR_ENCODER_NOT_FOUND;
+    if ((ret = omx_init(avctx, s->libname, s->libprefix)) < 0)
+        return ret;
+    s->omx_inited = 1;
 
     pthread_mutex_init(&s->state_mutex, NULL);
     pthread_cond_init(&s->state_cond, NULL);
@@ -660,7 +683,7 @@ static av_cold int omx_encode_init(AVCodecContext *avctx)
         return AVERROR(ENOSYS);
     }
 
-    if ((ret = find_component(s->omx_context, avctx, role, s->component_name, sizeof(s->component_name))) < 0)
+    if ((ret = find_component(avctx, role, s->component_name, sizeof(s->component_name))) < 0)
         goto fail;
 
     av_log(avctx, AV_LOG_INFO, "Using %s\n", s->component_name);
