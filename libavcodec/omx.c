@@ -464,6 +464,27 @@ static OMX_ERRORTYPE fill_buffer(AVCodecContext *avctx, OMX_BUFFERHEADERTYPE *bu
     return err;
 }
 
+static const struct {
+    OMX_COLOR_FORMATTYPE color_format;
+    enum AVPixelFormat pix_fmt;
+} supported_color_formats[] = {
+    { OMX_COLOR_FormatYUV420Planar,              AV_PIX_FMT_YUV420P },
+    { OMX_COLOR_FormatYUV420PackedPlanar,        AV_PIX_FMT_YUV420P },
+    { OMX_COLOR_FormatYUV420SemiPlanar,          AV_PIX_FMT_NV12    },
+    { OMX_COLOR_FormatYUV420PackedSemiPlanar,    AV_PIX_FMT_NV12    },
+    { OMX_COLOR_FormatUnused,                    AV_PIX_FMT_NONE    },
+};
+
+static enum AVPixelFormat get_pix_fmt(OMX_COLOR_FORMATTYPE color_format)
+{
+    int i;
+    for (i = 0; supported_color_formats[i].pix_fmt != AV_PIX_FMT_NONE; i++) {
+        if (supported_color_formats[i].color_format == color_format)
+            return supported_color_formats[i].pix_fmt;
+    }
+    return AV_PIX_FMT_NONE;
+}
+
 static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, int encode)
 {
     OMXCodecContext *s = avctx->priv_data;
@@ -527,8 +548,7 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
             video_port_format.nPortIndex = s->in_port;
             if (OMX_GetParameter(s->handle, OMX_IndexParamVideoPortFormat, &video_port_format) != OMX_ErrorNone)
                 break;
-            if (video_port_format.eColorFormat == OMX_COLOR_FormatYUV420Planar ||
-                video_port_format.eColorFormat == OMX_COLOR_FormatYUV420PackedPlanar) {
+            if (get_pix_fmt(video_port_format.eColorFormat) == avctx->pix_fmt) {
                 s->color_format = video_port_format.eColorFormat;
                 break;
             }
@@ -734,6 +754,102 @@ static av_cold void cleanup(OMXCodecContext *s)
     av_freep(&s->free_in_buffers);
     av_freep(&s->done_out_buffers);
     av_freep(&s->output_buf);
+}
+
+static enum AVPixelFormat omx_encoder_pix_fmts[10] = {
+    AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE
+};
+static int omx_encoder_static_inited = 0;
+
+#define INIT_STRUCT_STATIC(x) do {                                        \
+        x.nSize = sizeof(x);                                              \
+        x.nVersion = version;                                             \
+    } while (0)
+
+static av_cold void omx_encode_init_static(AVCodec *codec)
+{
+    if (omx_encoder_static_inited)
+        return;
+    /* Note, we can't pass parameters about which lib to use here */
+    if (!omx_init(NULL, NULL, NULL)) {
+        char component_name[128];
+        if (!find_component(NULL, "video_encoder.avc", component_name, sizeof(component_name))) {
+            OMX_VERSIONTYPE version = { { 0 } };
+            OMX_HANDLETYPE handle = NULL;
+            OMX_PORT_PARAM_TYPE video_port_params = { 0 };
+            OMX_VIDEO_PARAM_PORTFORMATTYPE video_port_format = { 0 };
+            OMX_ERRORTYPE err;
+            int i, in_port = -1;
+            int out_idx = 0, j;
+
+            version.s.nVersionMajor = 1;
+            version.s.nVersionMinor = 1;
+            version.s.nRevision     = 2;
+
+            err = omx_context->ptr_GetHandle(&handle, component_name, NULL, (OMX_CALLBACKTYPE*) &callbacks);
+            if (err != OMX_ErrorNone) {
+                av_log(NULL, AV_LOG_ERROR, "OMX_GetHandle(%s) failed: %x\n", component_name, err);
+                goto end;
+            }
+
+            INIT_STRUCT_STATIC(video_port_params);
+            err = OMX_GetParameter(handle, OMX_IndexParamVideoInit, &video_port_params);
+            if (err != OMX_ErrorNone) {
+                av_log(NULL, AV_LOG_WARNING, "OMX_IndexParamVideoInit failed\n");
+                goto end;
+            }
+
+            for (i = 0; i < video_port_params.nPorts; i++) {
+                 int port = video_port_params.nStartPortNumber + i;
+                 OMX_PARAM_PORTDEFINITIONTYPE port_params = { 0 };
+                 INIT_STRUCT_STATIC(port_params);
+                 port_params.nPortIndex = port;
+                 err = OMX_GetParameter(handle, OMX_IndexParamPortDefinition, &port_params);
+                 if (err != OMX_ErrorNone) {
+                     av_log(NULL, AV_LOG_WARNING, "port %d error %x\n", port, err);
+                     break;
+                 }
+                 if (port_params.eDir == OMX_DirInput) {
+                     in_port = port;
+                     break;
+                 }
+            }
+            if (in_port < 0) {
+                av_log(NULL, AV_LOG_WARNING, "No input port found\n");
+                goto end;
+            }
+            for (i = 0; ; i++) {
+                enum AVPixelFormat pix_fmt;
+                INIT_STRUCT_STATIC(video_port_format);
+                video_port_format.nIndex = i;
+                video_port_format.nPortIndex = in_port;
+                if (OMX_GetParameter(handle, OMX_IndexParamVideoPortFormat, &video_port_format) != OMX_ErrorNone)
+                    break;
+                pix_fmt = get_pix_fmt(video_port_format.eColorFormat);
+                if (pix_fmt != AV_PIX_FMT_NONE) {
+                    for (j = 0; j < out_idx; j++)
+                        if (omx_encoder_pix_fmts[j] == pix_fmt)
+                            break;
+                    if (j == out_idx && out_idx < FF_ARRAY_ELEMS(omx_encoder_pix_fmts) - 1) { // Not found yet
+//                        av_log(NULL, AV_LOG_WARNING, "listing %s as supported\n", av_get_pix_fmt_name(pix_fmt));
+                        omx_encoder_pix_fmts[out_idx++] = pix_fmt;
+                     } else {
+//                         av_log(NULL, AV_LOG_WARNING, "duplicate %s (%d %x)\n", av_get_pix_fmt_name(pix_fmt), video_port_format.eColorFormat, video_port_format.eColorFormat);
+                    }
+                } else {
+//                    av_log(NULL, AV_LOG_WARNING, "unsupported color format %d %x\n", video_port_format.eColorFormat, video_port_format.eColorFormat);
+                }
+            }
+            if (out_idx > 0)
+                omx_encoder_pix_fmts[out_idx] = AV_PIX_FMT_NONE;
+
+end:
+            if (handle)
+                omx_context->ptr_FreeHandle(handle);
+        }
+        omx_deinit();
+    }
+    omx_encoder_static_inited = 1;
 }
 
 static av_cold int omx_encode_init(AVCodecContext *avctx)
@@ -1035,17 +1151,7 @@ static int omx_update_out_def(AVCodecContext *avctx)
     if (s->stride < avctx->width)
         s->stride = avctx->width;
 
-    switch (s->color_format) {
-    case OMX_COLOR_FormatYUV420Planar:
-    case OMX_COLOR_FormatYUV420PackedPlanar:
-    default:
-        avctx->pix_fmt = AV_PIX_FMT_YUV420P;
-        break;
-    case OMX_COLOR_FormatYUV420SemiPlanar:
-    case OMX_COLOR_FormatYUV420PackedSemiPlanar:
-        avctx->pix_fmt = AV_PIX_FMT_NV12;
-        break;
-    }
+    avctx->pix_fmt = get_pix_fmt(s->color_format);
     return 0;
 }
 
@@ -1342,10 +1448,6 @@ static const AVOption options[] = {
     { NULL }
 };
 
-static const enum AVPixelFormat omx_encoder_pix_fmts[] = {
-    AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE
-};
-
 static const AVClass omx_mpeg4enc_class = {
     .class_name = "mpeg4_omx",
     .item_name  = av_default_item_name,
@@ -1364,6 +1466,7 @@ AVCodec ff_mpeg4_omx_encoder = {
     .pix_fmts         = omx_encoder_pix_fmts,
     .capabilities     = AV_CODEC_CAP_DELAY,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .init_static_data = omx_encode_init_static,
     .priv_class       = &omx_mpeg4enc_class,
 };
 
@@ -1385,6 +1488,7 @@ AVCodec ff_h264_omx_encoder = {
     .pix_fmts         = omx_encoder_pix_fmts,
     .capabilities     = AV_CODEC_CAP_DELAY,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .init_static_data = omx_encode_init_static,
     .priv_class       = &omx_h264enc_class,
 };
 
