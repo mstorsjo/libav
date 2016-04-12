@@ -494,7 +494,7 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
     OMX_VIDEO_PARAM_PORTFORMATTYPE video_port_format = { 0 };
     OMX_VIDEO_PARAM_BITRATETYPE vid_param_bitrate = { 0 };
     OMX_ERRORTYPE err;
-    int i;
+    int i, default_size;
 
     s->version.s.nVersionMajor = 1;
     s->version.s.nVersionMinor = 1;
@@ -590,6 +590,11 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
     }
     in_port_params.format.video.nFrameWidth  = avctx->width;
     in_port_params.format.video.nFrameHeight = avctx->height;
+    if (encode) {
+        default_size = av_image_get_buffer_size(avctx->pix_fmt, s->stride, s->plane_size, 1);
+        if (in_port_params.nBufferSize < default_size)
+            in_port_params.nBufferSize = default_size;
+    }
 
     err = OMX_SetParameter(s->handle, OMX_IndexParamPortDefinition, &in_port_params);
     CHECK(err);
@@ -620,6 +625,11 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
             out_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingMPEG4;
         else if (avctx->codec->id == AV_CODEC_ID_H264)
             out_port_params.format.video.eCompressionFormat = OMX_VIDEO_CodingAVC;
+    }
+    if (!encode) {
+        default_size = av_image_get_buffer_size(avctx->pix_fmt, avctx->width, avctx->height, 1);
+        if (out_port_params.nBufferSize < default_size)
+            out_port_params.nBufferSize = default_size;
     }
 
     err = OMX_SetParameter(s->handle, OMX_IndexParamPortDefinition, &out_port_params);
