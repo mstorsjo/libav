@@ -967,6 +967,9 @@ static int video_get_buffer(AVCodecContext *s, AVFrame *pic)
 {
     FramePool *pool = s->internal->pool;
     int i;
+    int size;
+    AVBufferRef *buf;
+    int w, h;
 
     if (pic->data[0]) {
         av_log(s, AV_LOG_ERROR, "pic->data[0]!=NULL in avcodec_default_get_buffer\n");
@@ -976,6 +979,13 @@ static int video_get_buffer(AVCodecContext *s, AVFrame *pic)
     memset(pic->data, 0, sizeof(pic->data));
     pic->extended_data = pic->data;
 
+    w = FFALIGN(s->width, 16);
+    h = FFALIGN(s->height, 16);
+    size = av_image_fill_arrays(pic->data, pic->linesize, NULL, s->pix_fmt, w, h, 1);
+    pic->buf[0] = av_buffer_alloc(size);
+    av_image_fill_arrays(pic->data, pic->linesize, pic->buf[0]->data, s->pix_fmt, w, h, 1);
+
+/*
     for (i = 0; i < 4 && pool->pools[i]; i++) {
         pic->linesize[i] = pool->linesize[i];
 
@@ -991,7 +1001,7 @@ static int video_get_buffer(AVCodecContext *s, AVFrame *pic)
     }
     if (pic->data[1] && !pic->data[2])
         avpriv_set_systematic_pal2((uint32_t *)pic->data[1], s->pix_fmt);
-
+*/
     if (s->debug & FF_DEBUG_BUFFERS)
         av_log(s, AV_LOG_DEBUG, "default_get_buffer called on pic %p\n", pic);
 
