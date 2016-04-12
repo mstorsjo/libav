@@ -149,3 +149,26 @@ av_cold void ff_omx_deinit(void) {
     }
     pthread_mutex_unlock(&omx_context_mutex);
 }
+
+static const struct {
+    OMX_COLOR_FORMATTYPE color_format;
+    enum AVPixelFormat pix_fmt;
+} supported_color_formats[] = {
+    { OMX_COLOR_FormatYUV420Planar,              AV_PIX_FMT_YUV420P },
+    { OMX_COLOR_FormatYUV420PackedPlanar,        AV_PIX_FMT_YUV420P },
+    { OMX_COLOR_FormatYUV420SemiPlanar,          AV_PIX_FMT_NV12    },
+    { OMX_COLOR_FormatYUV420PackedSemiPlanar,    AV_PIX_FMT_NV12    },
+    { OMX_TI_COLOR_FormatYUV420PackedSemiPlanar, AV_PIX_FMT_NV12    },
+    { OMX_QCOM_COLOR_FormatYVU420SemiPlanar,     AV_PIX_FMT_NV21    },
+    { OMX_COLOR_FormatUnused,                    AV_PIX_FMT_NONE    },
+};
+
+enum AVPixelFormat ff_omx_get_pix_fmt(OMX_COLOR_FORMATTYPE color_format)
+{
+    int i;
+    for (i = 0; supported_color_formats[i].pix_fmt != AV_PIX_FMT_NONE; i++) {
+        if (supported_color_formats[i].color_format == color_format)
+            return supported_color_formats[i].pix_fmt;
+    }
+    return AV_PIX_FMT_NONE;
+}

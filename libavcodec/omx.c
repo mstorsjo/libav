@@ -20,7 +20,6 @@
  */
 
 #include "omx_core.h"
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
@@ -37,10 +36,6 @@
 #include "h264.h"
 #include "internal.h"
 
-#define INIT_STRUCT(x) do {                                               \
-        x.nSize = sizeof(x);                                              \
-        x.nVersion = s->version;                                          \
-    } while (0)
 #define CHECK(x) do {                                                     \
         if (x != OMX_ErrorNone) {                                         \
             av_log(avctx, AV_LOG_ERROR,                                   \
@@ -93,37 +88,6 @@ typedef struct OMXCodecContext {
 
     int input_zerocopy, output_zerocopy;
 } OMXCodecContext;
-
-static void append_buffer(pthread_mutex_t *mutex, pthread_cond_t *cond,
-                          int* array_size, OMX_BUFFERHEADERTYPE **array,
-                          OMX_BUFFERHEADERTYPE *buffer)
-{
-    pthread_mutex_lock(mutex);
-    array[(*array_size)++] = buffer;
-    pthread_cond_broadcast(cond);
-    pthread_mutex_unlock(mutex);
-}
-
-static OMX_BUFFERHEADERTYPE *get_buffer(pthread_mutex_t *mutex, pthread_cond_t *cond,
-                                        int* array_size, OMX_BUFFERHEADERTYPE **array,
-                                        int wait)
-{
-    OMX_BUFFERHEADERTYPE *buffer;
-    pthread_mutex_lock(mutex);
-    if (wait) {
-        while (!*array_size)
-           pthread_cond_wait(cond, mutex);
-    }
-    if (*array_size > 0) {
-        buffer = array[0];
-        (*array_size)--;
-        memmove(&array[0], &array[1], (*array_size) * sizeof(OMX_BUFFERHEADERTYPE*));
-    } else {
-        buffer = NULL;
-    }
-    pthread_mutex_unlock(mutex);
-    return buffer;
-}
 
 static OMX_ERRORTYPE event_handler(OMX_HANDLETYPE component, OMX_PTR app_data, OMX_EVENTTYPE event,
                                    OMX_U32 data1, OMX_U32 data2, OMX_PTR event_data)
@@ -266,20 +230,6 @@ end:
     return ret;
 }
 
-static av_cold void timed_wait(pthread_cond_t *cond, pthread_mutex_t *mutex, int ms)
-{
-    struct timeval tv;
-    struct timespec ts;
-    int64_t nsec;
-    gettimeofday(&tv, NULL);
-    ts.tv_sec = tv.tv_sec;
-    ts.tv_nsec = tv.tv_usec * 1000;
-    nsec = ts.tv_nsec + ms * 1000000LL;
-    ts.tv_sec += nsec / 1000000000;
-    ts.tv_nsec = nsec % 1000000000;
-    pthread_cond_timedwait(cond, mutex, &ts);
-}
-
 static av_cold int wait_for_state(OMXCodecContext *s, OMX_STATETYPE state)
 {
     int ret = 0;
@@ -321,29 +271,6 @@ static OMX_ERRORTYPE fill_buffer(AVCodecContext *avctx, OMX_BUFFERHEADERTYPE *bu
     }
     err = OMX_FillThisBuffer(s->handle, buffer);
     return err;
-}
-
-static const struct {
-    OMX_COLOR_FORMATTYPE color_format;
-    enum AVPixelFormat pix_fmt;
-} supported_color_formats[] = {
-    { OMX_COLOR_FormatYUV420Planar,              AV_PIX_FMT_YUV420P },
-    { OMX_COLOR_FormatYUV420PackedPlanar,        AV_PIX_FMT_YUV420P },
-    { OMX_COLOR_FormatYUV420SemiPlanar,          AV_PIX_FMT_NV12    },
-    { OMX_COLOR_FormatYUV420PackedSemiPlanar,    AV_PIX_FMT_NV12    },
-    { OMX_TI_COLOR_FormatYUV420PackedSemiPlanar, AV_PIX_FMT_NV12    },
-    { OMX_QCOM_COLOR_FormatYVU420SemiPlanar,     AV_PIX_FMT_NV21    },
-    { OMX_COLOR_FormatUnused,                    AV_PIX_FMT_NONE    },
-};
-
-static enum AVPixelFormat get_pix_fmt(OMX_COLOR_FORMATTYPE color_format)
-{
-    int i;
-    for (i = 0; supported_color_formats[i].pix_fmt != AV_PIX_FMT_NONE; i++) {
-        if (supported_color_formats[i].color_format == color_format)
-            return supported_color_formats[i].pix_fmt;
-    }
-    return AV_PIX_FMT_NONE;
 }
 
 static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, int encode)
@@ -411,7 +338,7 @@ static av_cold int omx_component_init(AVCodecContext *avctx, const char *role, i
             video_port_format.nPortIndex = s->in_port;
             if (OMX_GetParameter(s->handle, OMX_IndexParamVideoPortFormat, &video_port_format) != OMX_ErrorNone)
                 break;
-            if (get_pix_fmt(video_port_format.eColorFormat) == avctx->pix_fmt) {
+            if (ff_omx_get_pix_fmt(video_port_format.eColorFormat) == avctx->pix_fmt) {
                 s->color_format = video_port_format.eColorFormat;
                 break;
             }
@@ -709,7 +636,7 @@ static av_cold void omx_encode_init_static(AVCodec *codec)
                 video_port_format.nPortIndex = in_port;
                 if (OMX_GetParameter(handle, OMX_IndexParamVideoPortFormat, &video_port_format) != OMX_ErrorNone)
                     break;
-                pix_fmt = get_pix_fmt(video_port_format.eColorFormat);
+                pix_fmt = ff_omx_get_pix_fmt(video_port_format.eColorFormat);
                 if (pix_fmt != AV_PIX_FMT_NONE) {
                     for (j = 0; j < out_idx; j++)
                         if (omx_encoder_pix_fmts[j] == pix_fmt)
@@ -1041,7 +968,7 @@ static int omx_update_out_def(AVCodecContext *avctx)
     if (s->stride < avctx->width)
         s->stride = avctx->width;
 
-    avctx->pix_fmt = get_pix_fmt(s->color_format);
+    avctx->pix_fmt = ff_omx_get_pix_fmt(s->color_format);
     return 0;
 }
 

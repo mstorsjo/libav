@@ -31,6 +31,15 @@
 #include <stdint.h>
 #include <OMX_Core.h>
 #include <OMX_Component.h>
+#include <pthread.h>
+#include <sys/time.h>
+#include <string.h>
+#include "libavutil/attributes.h"
+
+#define INIT_STRUCT(x) do {                                               \
+        x.nSize = sizeof(x);                                              \
+        x.nVersion = s->version;                                          \
+    } while (0)
 
 #ifdef OMX_SKIP64BIT
 static inline OMX_TICKS to_omx_ticks(int64_t value)
@@ -71,5 +80,52 @@ extern OMXContext *ff_omx_context;
 
 int ff_omx_init(void *logctx, const char *libname, const char *prefix);
 void ff_omx_deinit(void);
+
+static inline void append_buffer(pthread_mutex_t *mutex, pthread_cond_t *cond,
+                                 int* array_size, OMX_BUFFERHEADERTYPE **array,
+                                 OMX_BUFFERHEADERTYPE *buffer)
+{
+    pthread_mutex_lock(mutex);
+    array[(*array_size)++] = buffer;
+    pthread_cond_broadcast(cond);
+    pthread_mutex_unlock(mutex);
+}
+
+static inline OMX_BUFFERHEADERTYPE *get_buffer(pthread_mutex_t *mutex, pthread_cond_t *cond,
+                                               int* array_size, OMX_BUFFERHEADERTYPE **array,
+                                               int wait)
+{
+    OMX_BUFFERHEADERTYPE *buffer;
+    pthread_mutex_lock(mutex);
+    if (wait) {
+        while (!*array_size)
+           pthread_cond_wait(cond, mutex);
+    }
+    if (*array_size > 0) {
+        buffer = array[0];
+        (*array_size)--;
+        memmove(&array[0], &array[1], (*array_size) * sizeof(OMX_BUFFERHEADERTYPE*));
+    } else {
+        buffer = NULL;
+    }
+    pthread_mutex_unlock(mutex);
+    return buffer;
+}
+
+static inline av_cold void timed_wait(pthread_cond_t *cond, pthread_mutex_t *mutex, int ms)
+{
+    struct timeval tv;
+    struct timespec ts;
+    int64_t nsec;
+    gettimeofday(&tv, NULL);
+    ts.tv_sec = tv.tv_sec;
+    ts.tv_nsec = tv.tv_usec * 1000;
+    nsec = ts.tv_nsec + ms * 1000000LL;
+    ts.tv_sec += nsec / 1000000000;
+    ts.tv_nsec = nsec % 1000000000;
+    pthread_cond_timedwait(cond, mutex, &ts);
+}
+
+enum AVPixelFormat ff_omx_get_pix_fmt(OMX_COLOR_FORMATTYPE color_format);
 
 #endif
