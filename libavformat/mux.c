@@ -592,6 +592,11 @@ static int compute_muxer_pkt_fields(AVFormatContext *s, AVStream *st, AVPacket *
         av_log(s, AV_LOG_TRACE, "av_write_frame: pts2:%s dts2:%s\n",
             av_ts2str(pkt->pts), av_ts2str(pkt->dts));
 
+    // Don't update cur_dts for empty packets for a muxer that only use them
+    // for signaling.
+    if (pkt->size == 0 && s->oformat->flags & AVFMT_SIGNAL_EMPTY_PKT)
+        return 0;
+
     st->cur_dts = pkt->dts;
     st->priv_pts->val = pkt->dts;
 
