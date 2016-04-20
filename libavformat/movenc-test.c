@@ -69,6 +69,7 @@ enum AVPictureType last_picture;
 int skip_write;
 int skip_write_audio;
 int clear_duration;
+int manual_flush;
 
 int num_warnings;
 
@@ -263,6 +264,14 @@ static void mux_frames(int n)
             continue;
         if (skip_write_audio && pkt.stream_index == 1)
             continue;
+        if (manual_flush && pkt.stream_index == 0 && pkt.flags & AV_PKT_FLAG_KEY) {
+            AVPacket signalpkt = pkt;
+            signalpkt.data = NULL;
+            signalpkt.size = 0;
+            signalpkt.buf = NULL;
+            av_write_frame(ctx, &signalpkt);
+            av_write_frame(ctx, NULL);
+        }
         av_write_frame(ctx, &pkt);
     }
 }
@@ -315,6 +324,7 @@ int main(int argc, char **argv)
     int c;
     uint8_t header[HASH_SIZE];
     uint8_t content[HASH_SIZE];
+    uint8_t vfr_hash[HASH_SIZE];
     int empty_moov_pos;
     int prev_pos;
 
@@ -669,6 +679,36 @@ int main(int argc, char **argv)
     clear_duration = 0;
     reset_count_warnings();
     check(num_warnings > 0, "No warnings printed for filled in durations");
+
+    // Test whether we can get the same duration for the last packet in
+    // a stream by manually signaling it and manually flushing, as if
+    // we let the muxer cut fragments automatically on keyframes.
+    init_out("vfr-duration");
+    av_dict_set(&opts, "movflags", "frag_keyframe+empty_moov", 0);
+    init_fps(1, 1, 3);
+    mux_frames(gop_size);
+    duration /= 10;
+    mux_frames(gop_size);
+    finish();
+    close_out();
+    memcpy(vfr_hash, hash, HASH_SIZE);
+
+    init_count_warnings();
+    clear_duration = 1;
+    manual_flush = 1;
+    init_out("vfr-noduration-signal");
+    av_dict_set(&opts, "movflags", "frag_custom+empty_moov", 0);
+    init_fps(1, 1, 3);
+    mux_frames(gop_size);
+    duration /= 10;
+    mux_frames(gop_size);
+    finish();
+    close_out();
+    clear_duration = 0;
+    manual_flush = 0;
+    reset_count_warnings();
+    check(num_warnings > 0, "No warnings printed for filled in durations");
+    check(!memcmp(hash, vfr_hash, HASH_SIZE), "Manually signaled fragment end times doesn't work");
 
     av_free(md5);
 

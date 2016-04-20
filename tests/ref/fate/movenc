@@ -26,3 +26,5 @@ c3681590a292cb9ca19a5a982e530166 1219 delay-moov-elst-signal-init-discont
 aa5462cc0d2144f72154d9c309edb57d 996 delay-moov-elst-signal-second-frag-discont
 f12d4a0e054abcc508cc0d28cb320e57 4935 vfr
 f12d4a0e054abcc508cc0d28cb320e57 4935 vfr-noduration
+2e5302e75bd05351f721307d2334ad7a 7807 vfr-duration
+2e5302e75bd05351f721307d2334ad7a 7807 vfr-noduration-signal
