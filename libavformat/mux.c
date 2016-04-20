@@ -593,8 +593,9 @@ static int compute_muxer_pkt_fields(AVFormatContext *s, AVStream *st, AVPacket *
             av_ts2str(pkt->pts), av_ts2str(pkt->dts));
 
     // Don't update cur_dts for empty packets for a muxer that only use them
-    // for signaling.
-    if (pkt->size == 0 && s->oformat->flags & AVFMT_SIGNAL_EMPTY_PKT)
+    // for signaling, or for sentinel packets that don't reach the muxer.
+    if ((pkt->size == 0 && s->oformat->flags & AVFMT_SIGNAL_EMPTY_PKT) ||
+        pkt->flags & AV_PKT_FLAG_SENTINEL)
         return 0;
 
     st->cur_dts = pkt->dts;
@@ -1098,6 +1099,11 @@ int av_interleaved_write_frame(AVFormatContext *s, AVPacket *pkt)
         }
         if (ret <= 0) //FIXME cleanup needed for ret<0 ?
             return ret;
+
+        if (opkt.flags & AV_PKT_FLAG_SENTINEL) {
+            av_packet_unref(&opkt);
+            return ret;
+        }
 
         ret = write_packet(s, &opkt);
         if (ret >= 0)
