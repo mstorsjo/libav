@@ -939,18 +939,11 @@ static int interleave_compare_dts(AVFormatContext *s, AVPacket *next,
     return comp > 0;
 }
 
-int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *out,
-                                 AVPacket *pkt, int flush)
+static int next_packet_available_by_dts(AVFormatContext *s, int flush)
 {
-    AVPacketList *pktl;
     int stream_count = 0;
     int noninterleaved_count = 0;
-    int i, ret;
-
-    if (pkt) {
-        if ((ret = ff_interleave_add_packet(s, pkt, interleave_compare_dts)) < 0)
-            return ret;
-    }
+    int i;
 
     for (i = 0; i < s->nb_streams; i++) {
         if (s->streams[i]->last_in_packet_buffer) {
@@ -998,7 +991,21 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *out,
         }
     }
 
-    if (stream_count && flush) {
+    return stream_count && flush;
+}
+
+int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *out,
+                                 AVPacket *pkt, int flush)
+{
+    AVPacketList *pktl;
+    int ret;
+
+    if (pkt) {
+        if ((ret = ff_interleave_add_packet(s, pkt, interleave_compare_dts)) < 0)
+            return ret;
+    }
+
+    if (next_packet_available_by_dts(s, flush)) {
         AVStream *st;
         pktl = s->internal->packet_buffer;
         *out = pktl->pkt;
@@ -1019,6 +1026,32 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *out,
     }
 }
 
+AVPacket *av_interleaved_poll_next(AVFormatContext *s, int stream, int flush)
+{
+    AVPacketList *pktl;
+
+    if (stream < 0) {
+        if (next_packet_available_by_dts(s, flush))
+            return &s->internal->packet_buffer->pkt;
+        return NULL;
+    }
+
+    pktl = s->internal->packet_buffer;
+    while (pktl) {
+        if (pktl->pkt.stream_index == stream)
+            return &pktl->pkt;
+        pktl = pktl->next;
+    }
+
+    return NULL;
+}
+
+int av_interleaved_get_next(AVFormatContext *s, AVPacket *out, int flush)
+{
+    return ff_interleave_packet_per_dts(s, out, NULL, flush);
+}
+
+
 /**
  * Interleave an AVPacket correctly so it can be muxed.
  * @param out the interleaved packet will be output here
@@ -1037,6 +1070,52 @@ static int interleave_packet(AVFormatContext *s, AVPacket *out, AVPacket *in, in
         return ret;
     } else
         return ff_interleave_packet_per_dts(s, out, in, flush);
+}
+
+int av_interleaved_add_packet(AVFormatContext *s, AVPacket *pkt)
+{
+    int ret;
+    AVStream *st = s->streams[pkt->stream_index];
+
+    ret = prepare_input_packet(s, pkt);
+    if (ret < 0)
+        goto fail;
+
+    if (s->oformat->check_bitstream) {
+        if (!st->internal->bitstream_checked) {
+            if ((ret = s->oformat->check_bitstream(s, pkt)) < 0)
+                goto fail;
+            else if (ret == 1)
+                st->internal->bitstream_checked = 1;
+        }
+    }
+
+    av_apply_bitstream_filters(st->internal->avctx, pkt, st->internal->bsfc);
+    if (pkt->size == 0 && pkt->side_data_elems == 0)
+        return 0;
+    if (!st->codecpar->extradata && st->internal->avctx->extradata) {
+        int eret = ff_alloc_extradata(st->codecpar, st->internal->avctx->extradata_size);
+        if (eret < 0)
+            return AVERROR(ENOMEM);
+        st->codecpar->extradata_size = st->internal->avctx->extradata_size;
+        memcpy(st->codecpar->extradata, st->internal->avctx->extradata, st->internal->avctx->extradata_size);
+    }
+
+#if FF_API_COMPUTE_PKT_FIELDS2
+    if ((ret = compute_muxer_pkt_fields(s, st, pkt)) < 0 && !(s->oformat->flags & AVFMT_NOTIMESTAMPS))
+        goto fail;
+#endif
+
+    if (pkt->dts == AV_NOPTS_VALUE && !(s->oformat->flags & AVFMT_NOTIMESTAMPS)) {
+        ret = AVERROR(EINVAL);
+        goto fail;
+    }
+
+    return ff_interleave_add_packet(s, pkt, interleave_compare_dts);
+
+fail:
+    av_packet_unref(pkt);
+    return ret;
 }
 
 int av_interleaved_write_frame(AVFormatContext *s, AVPacket *pkt)

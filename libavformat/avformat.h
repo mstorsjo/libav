@@ -2503,6 +2503,39 @@ int av_interleaved_write_uncoded_frame(AVFormatContext *s, int stream_index,
 int av_write_uncoded_frame_query(AVFormatContext *s, int stream_index);
 
 /**
+ * Add a packet to the interleaving queues, but do not write it yet.
+ *
+ * Don't use this for formats that require custom interleaving
+ * (formats that have got a custom interleave_packet function
+ * in the AVOutputFormat struct).
+ */
+int av_interleaved_add_packet(AVFormatContext *s, AVPacket *pkt);
+
+/**
+ * Check what the next packet to write would be.
+ *
+ * @param stream the stream to check. If this is >= 0,
+ *               this returns a pointer to the first packet in that particular
+ *               stream. If < 0, this returns the next packet to be written,
+ *               or NULL if not enough packets have been queued (or no packets
+ *               are available).
+ * @param flush  if nonzero, return the first packet immediately for stream < 0.
+ *               If stream >= 0, this parameter is ignored.
+ * @return a pointer to the AVPacket within the interleaving queue. Ownership
+ *         is not transferred.
+ */
+AVPacket *av_interleaved_poll_next(AVFormatContext *s, int stream, int flush);
+
+/**
+ * Get the next packet to write.
+ *
+ * @return 1 if a packet was available, 0 if not. If a packet was returned in the
+ *         out parameter, ownership is transferred, and the packet is removed from
+ *         the queue.
+ */
+int av_interleaved_get_next(AVFormatContext *s, AVPacket *out, int flush);
+
+/**
  * Write the stream trailer to an output media file and free the
  * file private data.
  *
