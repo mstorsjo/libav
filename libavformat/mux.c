@@ -340,7 +340,10 @@ static int compute_pkt_fields2(AVFormatContext *s, AVStream *st, AVPacket *pkt)
 
     av_log(s, AV_LOG_TRACE, "av_write_frame: pts2:%"PRId64" dts2:%"PRId64"\n",
             pkt->pts, pkt->dts);
-    st->cur_dts = pkt->dts;
+    // Don't update cur_dts for empty packets for a muxer that only use them
+    // for signaling.
+    if (pkt->size > 0 || !(s->oformat->flags & AVFMT_SIGNAL_EMPTY_PKT))
+        st->cur_dts = pkt->dts;
 
     return 0;
 }
