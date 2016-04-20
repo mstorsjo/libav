@@ -4699,6 +4699,12 @@ static int mov_write_single_packet(AVFormatContext *s, AVPacket *pkt)
                     trk->start_cts = pkt->pts - pkt->dts;
                 else
                     trk->start_cts = 0;
+            } else if (trk->start_dts != AV_NOPTS_VALUE) {
+                trk->track_duration = pkt->dts - trk->start_dts;
+                if (pkt->pts != AV_NOPTS_VALUE)
+                    trk->end_pts = pkt->pts;
+                else
+                    trk->end_pts = pkt->dts;
             }
 
             return 0;             /* Discard 0 sized packets */
