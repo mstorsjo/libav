@@ -435,6 +435,8 @@ typedef struct AVProbeData {
                                         will be shifted in av_write_frame and
                                         av_interleaved_write_frame so they
                                         start from 0. */
+#define AVFMT_SIGNAL_EMPTY_PKT 0x80000 /**< Format allows muxing empty packets
+                                        in order to hint about future timestamps. */
 
 /**
  * @addtogroup lavf_encoding
@@ -458,7 +460,7 @@ typedef struct AVOutputFormat {
      * can use flags: AVFMT_NOFILE, AVFMT_NEEDNUMBER,
      * AVFMT_GLOBALHEADER, AVFMT_NOTIMESTAMPS, AVFMT_VARIABLE_FPS,
      * AVFMT_NODIMENSIONS, AVFMT_NOSTREAMS, AVFMT_ALLOW_FLUSH,
-     * AVFMT_TS_NONSTRICT, AVFMT_TS_NEGATIVE
+     * AVFMT_TS_NONSTRICT, AVFMT_TS_NEGATIVE, AVFMT_SIGNAL_EMPTY_PKT
      */
     int flags;
 

@@ -4348,7 +4348,8 @@ AVOutputFormat ff_mov_muxer = {
     .write_header      = mov_write_header,
     .write_packet      = mov_write_packet,
     .write_trailer     = mov_write_trailer,
-    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE,
+    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE |
+                         AVFMT_SIGNAL_EMPTY_PKT,
     .codec_tag         = (const AVCodecTag* const []){
         ff_codec_movvideo_tags, ff_codec_movaudio_tags, 0
     },
@@ -4367,7 +4368,8 @@ AVOutputFormat ff_tgp_muxer = {
     .write_header      = mov_write_header,
     .write_packet      = mov_write_packet,
     .write_trailer     = mov_write_trailer,
-    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE,
+    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE |
+                         AVFMT_SIGNAL_EMPTY_PKT,
     .codec_tag         = (const AVCodecTag* const []){ codec_3gp_tags, 0 },
     .priv_class        = &tgp_muxer_class,
 };
@@ -4386,7 +4388,8 @@ AVOutputFormat ff_mp4_muxer = {
     .write_header      = mov_write_header,
     .write_packet      = mov_write_packet,
     .write_trailer     = mov_write_trailer,
-    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE,
+    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE |
+                         AVFMT_SIGNAL_EMPTY_PKT,
     .codec_tag         = (const AVCodecTag* const []){ ff_mp4_obj_type, 0 },
     .priv_class        = &mp4_muxer_class,
 };
@@ -4404,7 +4407,8 @@ AVOutputFormat ff_psp_muxer = {
     .write_header      = mov_write_header,
     .write_packet      = mov_write_packet,
     .write_trailer     = mov_write_trailer,
-    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE,
+    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE |
+                         AVFMT_SIGNAL_EMPTY_PKT,
     .codec_tag         = (const AVCodecTag* const []){ ff_mp4_obj_type, 0 },
     .priv_class        = &psp_muxer_class,
 };
@@ -4421,7 +4425,8 @@ AVOutputFormat ff_tg2_muxer = {
     .write_header      = mov_write_header,
     .write_packet      = mov_write_packet,
     .write_trailer     = mov_write_trailer,
-    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE,
+    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE |
+                         AVFMT_SIGNAL_EMPTY_PKT,
     .codec_tag         = (const AVCodecTag* const []){ codec_3gp_tags, 0 },
     .priv_class        = &tg2_muxer_class,
 };
@@ -4439,7 +4444,8 @@ AVOutputFormat ff_ipod_muxer = {
     .write_header      = mov_write_header,
     .write_packet      = mov_write_packet,
     .write_trailer     = mov_write_trailer,
-    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE,
+    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE |
+                         AVFMT_SIGNAL_EMPTY_PKT,
     .codec_tag         = (const AVCodecTag* const []){ codec_ipod_tags, 0 },
     .priv_class        = &ipod_muxer_class,
 };
@@ -4457,7 +4463,8 @@ AVOutputFormat ff_ismv_muxer = {
     .write_header      = mov_write_header,
     .write_packet      = mov_write_packet,
     .write_trailer     = mov_write_trailer,
-    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE,
+    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE |
+                         AVFMT_SIGNAL_EMPTY_PKT,
     .codec_tag         = (const AVCodecTag* const []){ ff_mp4_obj_type, 0 },
     .priv_class        = &ismv_muxer_class,
 };
@@ -4475,7 +4482,8 @@ AVOutputFormat ff_f4v_muxer = {
     .write_header      = mov_write_header,
     .write_packet      = mov_write_packet,
     .write_trailer     = mov_write_trailer,
-    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE,
+    .flags             = AVFMT_GLOBALHEADER | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE |
+                         AVFMT_SIGNAL_EMPTY_PKT,
     .codec_tag         = (const AVCodecTag* const []){ codec_f4v_tags, 0 },
     .priv_class        = &f4v_muxer_class,
 };

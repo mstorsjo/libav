@@ -13,6 +13,9 @@ libavutil:     2015-08-28
 
 API changes, most recent first:
 
+2016-xx-xx - xxxxxxx - lavf 57.6.0 - avformat.h
+  Add AVFMT_SIGNAL_EMPTY_PKT.
+
 2016-xx-xx - xxxxxxx - lavu 55.10.0 - opt.h
   Add av_opt_copy().
 
