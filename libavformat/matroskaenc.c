@@ -1608,6 +1608,7 @@ static int mkv_write_header(AVFormatContext *s)
             mkv->cluster_time_limit = 1000;
         if (mkv->cluster_size_limit < 0)
             mkv->cluster_size_limit = 32 * 1024;
+        s->ctx_flags |= AVFMTCTX_DELAYED_OUTPUT;
     }
 
     return 0;

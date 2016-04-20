@@ -5467,6 +5467,7 @@ static int mov_write_header(AVFormatContext *s)
     }
 
     if (mov->flags & FF_MOV_FLAG_FRAGMENT) {
+        s->ctx_flags |= AVFMTCTX_DELAYED_OUTPUT;
         /* If no fragmentation options have been set, set a default. */
         if (!(mov->flags & (FF_MOV_FLAG_FRAG_KEYFRAME |
                             FF_MOV_FLAG_FRAG_CUSTOM)) &&

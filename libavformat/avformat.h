@@ -1270,6 +1270,14 @@ typedef struct AVProgram {
 
 #define AVFMTCTX_NOHEADER      0x0001 /**< signal that no header is present
                                          (streams are added dynamically) */
+#define AVFMTCTX_DELAYED_OUTPUT 0x0002 /**< Signal that a muxer will delay output.
+                                          That is, the actual data corresponding to a
+                                          packet will not be output during the av_write_frame
+                                          call, but that call may output older, buffered data.
+                                          This allows callers to know where keyframes exist
+                                          in the output stream (where an av_write_frame call for
+                                          a keyframe could output a buffered cluster/fragment not
+                                          starting with a keyframe). */
 
 typedef struct AVChapter {
     int id;                 ///< unique ID to identify the chapter
