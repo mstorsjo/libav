@@ -23,6 +23,7 @@
 #include "libavutil/dict.h"
 #include "libavutil/intfloat.h"
 #include "libavutil/avassert.h"
+#include "libavutil/mathematics.h"
 #include "avc.h"
 #include "avformat.h"
 #include "flv.h"
@@ -570,6 +571,9 @@ static int flv_write_packet(AVFormatContext *s, AVPacket *pkt)
         s->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
     }
 
+    avio_write_marker(pb, avio_tell(pb), av_rescale(ts, AV_TIME_BASE, 1000),
+                      pkt->flags & AV_PKT_FLAG_KEY && (flv->video_par ? par->codec_type == AVMEDIA_TYPE_VIDEO : 1));
+
     switch (par->codec_type) {
     case AVMEDIA_TYPE_VIDEO:
         avio_w8(pb, FLV_TAG_TYPE_VIDEO);
@@ -715,6 +719,6 @@ AVOutputFormat ff_flv_muxer = {
                           flv_video_codec_ids, flv_audio_codec_ids, 0
                       },
     .flags          = AVFMT_GLOBALHEADER | AVFMT_VARIABLE_FPS |
-                      AVFMT_TS_NONSTRICT,
+                      AVFMT_TS_NONSTRICT | AVFMT_OUTPUT_POS,
     .priv_class     = &flv_muxer_class,
 };
