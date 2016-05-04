@@ -480,6 +480,8 @@ int avformat_write_header(AVFormatContext *s, AVDictionary **options)
     if ((ret = init_muxer(s, options)) < 0)
         return ret;
 
+    if (!(s->oformat->flags & AVFMT_NOFILE) && s->pb)
+        avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_HEADER);
     if (s->oformat->write_header && !s->oformat->check_bitstream) {
         ret = s->oformat->write_header(s);
         if (ret >= 0 && s->pb && s->pb->error < 0)
@@ -490,6 +492,8 @@ int avformat_write_header(AVFormatContext *s, AVDictionary **options)
             avio_flush(s->pb);
         s->internal->header_written = 1;
     }
+    if (!(s->oformat->flags & AVFMT_NOFILE) && s->pb)
+        avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_OPAQUE);
 
     if ((ret = init_pts(s)) < 0)
         return ret;
@@ -1142,6 +1146,8 @@ int av_write_trailer(AVFormatContext *s)
     }
 
     if (!s->internal->header_written && s->oformat->write_header) {
+        if (!(s->oformat->flags & AVFMT_NOFILE) && s->pb)
+            avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_HEADER);
         ret = s->oformat->write_header(s);
         if (ret >= 0 && s->pb && s->pb->error < 0)
             ret = s->pb->error;
@@ -1153,6 +1159,8 @@ int av_write_trailer(AVFormatContext *s)
     }
 
 fail:
+    if (!(s->oformat->flags & AVFMT_NOFILE) && s->pb)
+        avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_TRAILER);
     if ((s->internal->header_written || !s->oformat->write_header) && s->oformat->write_trailer)
         if (ret >= 0) {
         ret = s->oformat->write_trailer(s);
