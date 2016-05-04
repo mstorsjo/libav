@@ -52,6 +52,12 @@ typedef struct AVIOInterruptCB {
     void *opaque;
 } AVIOInterruptCB;
 
+typedef struct AVIOStreamPos {
+    int64_t pos;
+    int64_t time;
+    int key;
+} AVIOStreamPos;
+
 /**
  * Directory entry types.
  */
@@ -259,6 +265,27 @@ typedef struct AVIOContext {
      * ',' separated list of disallowed protocols.
      */
     const char *protocol_blacklist;
+
+    /**
+     * An array of AVIOStreamPos, allocated by the caller, freed by the
+     * caller.
+     */
+    AVIOStreamPos *output_pos;
+    /**
+     * The number of elements in output_pos that are populated.
+     * This is reset to zero on each write_packet callback.
+     */
+    int nb_output_pos;
+    /**
+     * The number of elements in output_pos that are allocated.
+     */
+    int output_pos_len;
+    /**
+     * A flag whether output_pos only should contain keyframes.
+     * If set to zero, muxers can also fill in markers to any
+     * bytestream pos where a receiver can resync parsing, not only
+     * for keyframes. */
+    int output_pos_only_key;
 } AVIOContext;
 
 /* unbuffered I/O */
@@ -412,6 +439,18 @@ int avio_put_str16le(AVIOContext *s, const char *str);
  * @return number of bytes written.
  */
 int avio_put_str16be(AVIOContext *s, const char *str);
+
+/**
+ * Store a bytestream marker for the given bytestream position.
+ *
+ * @param pos the bytestream position (normally avio_tell(s))
+ * @param time the stream time the bytestream pos corresponds to,
+ *             or zero if unknown
+ * @param key Whether the stream starts with a keyframe at the given pos
+ * @return 0 on success, < 0 on failure. Failures should always be
+ *         non critical though.
+ */
+int avio_write_marker(AVIOContext *s, int64_t pos, int64_t time, int key);
 
 /**
  * Passing this as the "whence" parameter to a seek function causes it to

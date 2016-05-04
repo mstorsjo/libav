@@ -145,6 +145,7 @@ static void writeout(AVIOContext *s, const uint8_t *data, int len)
     }
     s->writeout_count ++;
     s->pos += len;
+    s->nb_output_pos = 0;
 }
 
 static void flush_buffer(AVIOContext *s)
@@ -448,6 +449,26 @@ void avio_wb24(AVIOContext *s, unsigned int val)
 {
     avio_wb16(s, (int)val >> 8);
     avio_w8(s, (uint8_t)val);
+}
+
+int avio_write_marker(AVIOContext *s, int64_t pos, int64_t time, int key)
+{
+    if (!s->output_pos)
+        return 0; // No error; the caller doesn't want output pos markers
+    // The only possible error here is if the pos array is full. This should
+    // mostly be non-fatal though; most muxers should not enqueue more than
+    // one marker per av_write_frame call. By flushing the AVIOContext after
+    // each av_write_frame call, or by setting output_pos_only_key, the
+    // caller should at least get one keyframe position per callback.
+    if (s->nb_output_pos >= s->output_pos_len)
+        return AVERROR(ERANGE);
+    if (!key && s->output_pos_only_key)
+        return 0; // This isn't a keyframe, the caller only wants to know about keyframes
+    s->output_pos[s->nb_output_pos].pos  = pos;
+    s->output_pos[s->nb_output_pos].time = time;
+    s->output_pos[s->nb_output_pos].key  = key;
+    s->nb_output_pos++;
+    return 0;
 }
 
 /* Input stream */

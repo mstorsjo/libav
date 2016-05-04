@@ -502,6 +502,8 @@ typedef struct AVProbeData {
                                         The user or muxer can override this through
                                         AVFormatContext.avoid_negative_ts
                                         */
+#define AVFMT_OUTPUT_POS   0x80000 /**< The format provides AVIOStreamPos
+                                        output position hints. */
 
 #define AVFMT_SEEK_TO_PTS   0x4000000 /**< Seeking is based on PTS */
 
