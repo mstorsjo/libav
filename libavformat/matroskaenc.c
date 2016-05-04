@@ -119,6 +119,7 @@ typedef struct MatroskaMuxContext {
     AVPacket        cur_audio_pkt;
 
     int have_attachments;
+    int have_video;
 
     int reserve_cues_space;
     int cluster_size_limit;
@@ -1015,6 +1016,7 @@ static int mkv_write_track(AVFormatContext *s, MatroskaMuxContext *mkv,
 
     switch (par->codec_type) {
     case AVMEDIA_TYPE_VIDEO:
+        mkv->have_video = 1;
         put_ebml_uint(pb, MATROSKA_ID_TRACKTYPE, MATROSKA_TRACK_TYPE_VIDEO);
 
         if(   st->avg_frame_rate.num > 0 && st->avg_frame_rate.den > 0
@@ -1992,6 +1994,11 @@ static int mkv_write_packet(AVFormatContext *s, AVPacket *pkt)
         mkv_start_new_cluster(s, pkt);
     }
 
+    if (!mkv->cluster_pos)
+        avio_write_marker(s->pb, avio_tell(s->pb),
+                          av_rescale_q(pkt->dts, s->streams[pkt->stream_index]->time_base, AV_TIME_BASE_Q),
+                          keyframe && (mkv->have_video ? codec_type == AVMEDIA_TYPE_VIDEO : 1));
+
     // check if we have an audio packet cached
     if (mkv->cur_audio_pkt.size > 0) {
         // for DASH audio, a CuePoint has to be added when there is a new cluster.
@@ -2260,7 +2267,8 @@ AVOutputFormat ff_matroska_muxer = {
     .write_packet      = mkv_write_flush_packet,
     .write_trailer     = mkv_write_trailer,
     .flags             = AVFMT_GLOBALHEADER | AVFMT_VARIABLE_FPS |
-                         AVFMT_TS_NONSTRICT | AVFMT_ALLOW_FLUSH,
+                         AVFMT_TS_NONSTRICT | AVFMT_ALLOW_FLUSH |
+                         AVFMT_OUTPUT_POS,
     .codec_tag         = (const AVCodecTag* const []){
          ff_codec_bmp_tags, ff_codec_wav_tags,
          additional_audio_tags, additional_video_tags, additional_subtitle_tags, 0
@@ -2295,7 +2303,8 @@ AVOutputFormat ff_webm_muxer = {
     .write_trailer     = mkv_write_trailer,
     .check_bitstream   = mkv_check_bitstream,
     .flags             = AVFMT_GLOBALHEADER | AVFMT_VARIABLE_FPS |
-                         AVFMT_TS_NONSTRICT | AVFMT_ALLOW_FLUSH,
+                         AVFMT_TS_NONSTRICT | AVFMT_ALLOW_FLUSH |
+                         AVFMT_OUTPUT_POS,
     .priv_class        = &webm_class,
 };
 #endif
@@ -2322,7 +2331,7 @@ AVOutputFormat ff_matroska_audio_muxer = {
     .write_trailer     = mkv_write_trailer,
     .check_bitstream   = mkv_check_bitstream,
     .flags             = AVFMT_GLOBALHEADER | AVFMT_TS_NONSTRICT |
-                         AVFMT_ALLOW_FLUSH,
+                         AVFMT_ALLOW_FLUSH | AVFMT_OUTPUT_POS,
     .codec_tag         = (const AVCodecTag* const []){
         ff_codec_wav_tags, additional_audio_tags, 0
     },
