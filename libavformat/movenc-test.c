@@ -101,6 +101,21 @@ static int io_write(void *opaque, uint8_t *buf, int size)
     return size;
 }
 
+static int io_write_data_type(void *opaque, uint8_t *buf, int size,
+                              enum AVIODataType type, int64_t time)
+{
+    const char *str;
+    switch (type) {
+    case AVIO_DATA_HEADER:      str = "header";  break;
+    case AVIO_DATA_SYNC_POINT:  str = "sync";    break;
+    case AVIO_DATA_PARSE_POINT: str = "parse";   break;
+    case AVIO_DATA_OPAQUE:      str = "opaque";  break;
+    case AVIO_DATA_TRAILER:     str = "trailer"; break;
+    }
+    av_log(NULL, AV_LOG_WARNING, "write_data len %d, time %lld, type %s %.4s\n", size, time, str, &buf[4]);
+    return io_write(opaque, buf, size);
+}
+
 static void init_out(const char *name)
 {
     char buf[100];
@@ -154,6 +169,7 @@ static void init_fps(int bf, int audio_preroll, int fps)
     ctx->pb = avio_alloc_context(iobuf, sizeof(iobuf), AVIO_FLAG_WRITE, NULL, NULL, io_write, NULL);
     if (!ctx->pb)
         exit(1);
+    ctx->pb->write_data_type = io_write_data_type;
     ctx->flags |= AVFMT_FLAG_BITEXACT;
 
     st = avformat_new_stream(ctx, NULL);
