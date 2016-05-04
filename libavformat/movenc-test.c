@@ -94,6 +94,8 @@ static void reset_count_warnings(void)
 
 static int io_write(void *opaque, uint8_t *buf, int size)
 {
+    if (ctx->pb->nb_output_pos)
+        av_log(NULL, AV_LOG_WARNING, "at %d + %d, %d markers, at %lld, time %lld, key %d\n", out_size, size, ctx->pb->nb_output_pos, ctx->pb->output_pos[0].pos, ctx->pb->output_pos[0].time, ctx->pb->output_pos[0].key);
     out_size += size;
     av_md5_update(md5, buf, size);
     if (out)
@@ -154,6 +156,8 @@ static void init_fps(int bf, int audio_preroll, int fps)
     ctx->pb = avio_alloc_context(iobuf, sizeof(iobuf), AVIO_FLAG_WRITE, NULL, NULL, io_write, NULL);
     if (!ctx->pb)
         exit(1);
+    ctx->pb->output_pos = av_mallocz(10 * sizeof(*ctx->pb->output_pos));
+    ctx->pb->output_pos_len = 10;
     ctx->flags |= AVFMT_FLAG_BITEXACT;
 
     st = avformat_new_stream(ctx, NULL);
@@ -299,6 +303,7 @@ static void signal_init_ts(void)
 static void finish(void)
 {
     av_write_trailer(ctx);
+    av_free(ctx->pb->output_pos);
     av_free(ctx->pb);
     avformat_free_context(ctx);
     ctx = NULL;
