@@ -54,6 +54,37 @@ typedef struct AVIOInterruptCB {
 } AVIOInterruptCB;
 
 /**
+ * Different data types that can be returned via the AVIO
+ * write_data_type callback.
+ */
+enum AVIODataType {
+    /**
+     * Header data; this needs to be present for the stream to be decodeable.
+     */
+    AVIO_DATA_HEADER,
+    /**
+     * A point in the output bytestream where a decoder can start decoding
+     * (i.e. a keyframe). A decoder given the data flagged with
+     * AVIO_DATA_HEADER, followed by any AVIO_DATA_SYNC_POINT, should
+     * give decodeable results.
+     */
+    AVIO_DATA_SYNC_POINT,
+    /**
+     * A point in the output bytestream where a demuxer can start parsing
+     * (for non self synchronizing bytestream formats).
+     */
+    AVIO_DATA_PARSE_POINT,
+    /**
+     * This is any, unlabelled data.
+     */
+    AVIO_DATA_OPAQUE,
+    /**
+     * Trailer data. (TODO: Description?)
+     */
+    AVIO_DATA_TRAILER
+};
+
+/**
  * Bytestream IO Context.
  * New fields can be added to the end with minor version bumps.
  * Removal, reordering and changes to existing fields require a major
@@ -115,6 +146,24 @@ typedef struct AVIOContext {
      * A combination of AVIO_SEEKABLE_ flags or 0 when the stream is not seekable.
      */
     int seekable;
+
+    /**
+     * A callback that is used instead of write_packet.
+     */
+    int (*write_data_type)(void *opaque, uint8_t *buf, int buf_size,
+                           enum AVIODataType type, int64_t time);
+    /**
+     * If set, don't call write_data_type separately for AVIO_DATA_PARSE_POINT,
+     * but ignore them and treat them as AVIO_DATA_OPAQUE (to avoid needlessly
+     * small chunks of data returned from the callback).
+     */
+    int ignore_parse_point;
+
+    /**
+     * Internal, not meant to be used from outside of AVIOContext.
+     */
+    enum AVIODataType current_type;
+    int64_t last_time;
 } AVIOContext;
 
 /**
@@ -191,6 +240,18 @@ int avio_put_str16le(AVIOContext *s, const char *str);
  * @return number of bytes written.
  */
 int avio_put_str16be(AVIOContext *s, const char *str);
+
+/**
+ * Mark the written bytestream as a specific type.
+ *
+ * Zero-length ranges are omitted from the output.
+ *
+ * @param time the stream time the current bytestream pos corresponds to
+ *             (in AV_TIME_BASE units), or AV_NOPTS_VALUE if unknown or not
+ *             applicable
+ * @param type the kind of data written starting at the current pos
+ */
+void avio_write_marker(AVIOContext *s, int64_t time, enum AVIODataType type);
 
 /**
  * ORing this as the "whence" parameter to a seek function causes it to

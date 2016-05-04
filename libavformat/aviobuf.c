@@ -140,6 +140,11 @@ int ffio_init_context(AVIOContext *s,
     s->read_pause = NULL;
     s->read_seek  = NULL;
 
+    s->write_data_type    = NULL;
+    s->ignore_parse_point = 0;
+    s->current_type       = AVIO_DATA_OPAQUE;
+    s->last_time          = AV_NOPTS_VALUE;
+
     return 0;
 }
 
@@ -163,13 +168,25 @@ AVIOContext *avio_alloc_context(
 static void flush_buffer(AVIOContext *s)
 {
     if (s->buf_ptr > s->buffer) {
-        if (s->write_packet && !s->error) {
-            int ret = s->write_packet(s->opaque, s->buffer,
+        if (!s->error) {
+            int ret = 0;
+            if (s->write_data_type)
+                ret = s->write_data_type(s->opaque, s->buffer,
+                                         s->buf_ptr - s->buffer,
+                                         s->current_type,
+                                         s->last_time);
+            else if (s->write_packet)
+                ret = s->write_packet(s->opaque, s->buffer,
                                       s->buf_ptr - s->buffer);
             if (ret < 0) {
                 s->error = ret;
             }
         }
+        if (s->current_type == AVIO_DATA_SYNC_POINT ||
+            s->current_type == AVIO_DATA_PARSE_POINT) {
+            s->current_type = AVIO_DATA_OPAQUE;
+        }
+        s->last_time = AV_NOPTS_VALUE;
         if (s->update_checksum) {
             s->checksum     = s->update_checksum(s->checksum, s->checksum_ptr,
                                                  s->buf_ptr - s->checksum_ptr);
@@ -400,6 +417,39 @@ void avio_wb24(AVIOContext *s, unsigned int val)
 {
     avio_wb16(s, val >> 8);
     avio_w8(s, val);
+}
+
+void avio_write_marker(AVIOContext *s, int64_t time, enum AVIODataType type)
+{
+    if (!s->write_data_type)
+        return;
+    if (type == AVIO_DATA_PARSE_POINT && s->ignore_parse_point &&
+        (s->current_type == AVIO_DATA_SYNC_POINT ||
+         s->current_type == AVIO_DATA_OPAQUE))
+        return;
+    assert(type != AVIO_DATA_OPAQUE);
+
+    if (s->buf_ptr > s->buffer) {
+        // We have buffered data, check if we need to flush
+        switch (type) {
+        case AVIO_DATA_HEADER:
+        case AVIO_DATA_TRAILER:
+            if (type != s->current_type)
+                avio_flush(s);
+            break;
+        case AVIO_DATA_SYNC_POINT:
+        case AVIO_DATA_PARSE_POINT:
+            avio_flush(s);
+            break;
+        case AVIO_DATA_OPAQUE:
+            break;
+        }
+    }
+    if (type == AVIO_DATA_PARSE_POINT && s->ignore_parse_point)
+        type = AVIO_DATA_OPAQUE;
+    s->current_type = type;
+    if (s->buf_ptr == s->buffer)
+        s->last_time = time;
 }
 
 /* Input stream */
