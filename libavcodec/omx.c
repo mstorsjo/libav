@@ -87,6 +87,8 @@ typedef struct OMXCodecContext {
     int output_buf_size;
 
     int input_zerocopy, output_zerocopy;
+
+    int return_every, num_out_frames;
 } OMXCodecContext;
 
 static OMX_ERRORTYPE event_handler(OMX_HANDLETYPE component, OMX_PTR app_data, OMX_EVENTTYPE event,
@@ -1132,7 +1134,7 @@ static int omx_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     OMX_BUFFERHEADERTYPE *buffer;
     int ret;
 
-    while (!*got_frame) {
+    while (1) {
         if (avpkt && avpkt->size) {
             // TODO: Check num_done_out_buffers too, unless we've returned data already
             uint8_t *ptr = avpkt->data;
@@ -1176,7 +1178,10 @@ static int omx_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
             OMX_EmptyThisBuffer(s->handle, buffer);
             s->eos_sent = 1;
         }
+        break;
+    }
 
+    while (!*got_frame) {
         pthread_mutex_lock(&s->output_mutex);
         if (!avpkt && !s->got_eos) {
             while (!s->num_done_out_buffers)
@@ -1221,6 +1226,15 @@ static int omx_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
             const uint8_t *src[4];
             int linesize[4];
             AVFrame *frame = data;
+            s->num_out_frames++;
+            if (s->return_every && (s->num_out_frames % s->return_every != 0)) {
+                if (s->output_zerocopy && buffer->pAppPrivate) {
+                    av_buffer_unref((AVBufferRef**)&buffer->pAppPrivate);
+                    buffer->pBuffer = NULL;
+                }
+                fill_buffer(avctx, buffer);
+                continue;
+            }
             if (s->output_zerocopy) {
                 AVBufferRef *buf = buffer->pAppPrivate;
                 frame->buf[0] = buf;
@@ -1261,10 +1275,12 @@ static av_cold int omx_decode_end(AVCodecContext *avctx)
 #define OFFSET(x) offsetof(OMXCodecContext, x)
 #define VDE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 #define VE  AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
+#define VD  AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM
 static const AVOption options[] = {
     { "omx_libname", "OpenMAX library name", OFFSET(libname), AV_OPT_TYPE_STRING, { 0 }, 0, 0, VDE },
     { "omx_libprefix", "OpenMAX library prefix", OFFSET(libprefix), AV_OPT_TYPE_STRING, { 0 }, 0, 0, VDE },
     { "zerocopy", "Try to avoid copying input frames if possible", OFFSET(input_zerocopy), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, VE },
+    { "return_every", "Return every n:th frame", OFFSET(return_every), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 100, VD },
     { NULL }
 };
 
