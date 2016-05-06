@@ -1141,32 +1141,39 @@ static int omx_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, A
     while (!*got_frame) {
         if (avpkt && avpkt->size) {
             // TODO: Check num_done_out_buffers too, unless we've returned data already
-            pthread_mutex_lock(&s->input_mutex);
-            while (!s->num_free_in_buffers && !s->reconfigure_out && !s->update_out_def)
-                pthread_cond_wait(&s->input_cond, &s->input_mutex);
-            if (s->reconfigure_out) {
-                s->reconfigure_out = 0;
+            uint8_t *ptr = avpkt->data;
+            int size = avpkt->size, n;
+            while (size > 0) {
+                pthread_mutex_lock(&s->input_mutex);
+                while (!s->num_free_in_buffers && !s->reconfigure_out && !s->update_out_def)
+                    pthread_cond_wait(&s->input_cond, &s->input_mutex);
+                if (s->reconfigure_out) {
+                    s->reconfigure_out = 0;
+                    pthread_mutex_unlock(&s->input_mutex);
+                    if (omx_reconfigure_out(avctx))
+                        return AVERROR_INVALIDDATA;
+                    continue;
+                }
+                if (s->update_out_def) {
+                    s->update_out_def = 0;
+                    pthread_mutex_unlock(&s->input_mutex);
+                    if (omx_update_out_def(avctx))
+                        return AVERROR_INVALIDDATA;
+                    continue;
+                }
+                buffer = s->free_in_buffers[--s->num_free_in_buffers];
                 pthread_mutex_unlock(&s->input_mutex);
-                if (omx_reconfigure_out(avctx))
-                    return AVERROR_INVALIDDATA;
-                continue;
-            }
-            if (s->update_out_def) {
-                s->update_out_def = 0;
-                pthread_mutex_unlock(&s->input_mutex);
-                if (omx_update_out_def(avctx))
-                    return AVERROR_INVALIDDATA;
-                continue;
-            }
-            buffer = s->free_in_buffers[--s->num_free_in_buffers];
-            pthread_mutex_unlock(&s->input_mutex);
 
-            memcpy(buffer->pBuffer, avpkt->data, avpkt->size);
-            buffer->nFilledLen = avpkt->size;
-            buffer->nFlags = OMX_BUFFERFLAG_ENDOFFRAME;
-            buffer->nOffset = 0;
-            buffer->nTimeStamp = to_omx_ticks(avpkt->pts);
-            OMX_EmptyThisBuffer(s->handle, buffer);
+                n = FFMIN(size, buffer->nAllocLen);
+                memcpy(buffer->pBuffer, ptr, n);
+                ptr += n;
+                size -= n;
+                buffer->nFilledLen = n;
+                buffer->nFlags = size == 0 ? OMX_BUFFERFLAG_ENDOFFRAME : 0;
+                buffer->nOffset = 0;
+                buffer->nTimeStamp = to_omx_ticks(avpkt->pts);
+                OMX_EmptyThisBuffer(s->handle, buffer);
+            }
         } else if (!s->eos_sent) {
             buffer = get_buffer(&s->input_mutex, &s->input_cond,
                                 &s->num_free_in_buffers, s->free_in_buffers, 1);
