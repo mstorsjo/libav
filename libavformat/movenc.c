@@ -4312,15 +4312,16 @@ static int mov_flush_fragment(AVFormatContext *s, int force)
     // already have reliable info for the end of that track, but other
     // tracks may need to be filled in.
     for (i = 0; i < s->nb_streams; i++) {
+        AVStream *st = s->streams[i];
         MOVTrack *track = &mov->tracks[i];
         if (!track->end_reliable) {
             const AVPacket *next = ff_interleaved_peek(s, i);
             if (next) {
-                track->track_duration = next->dts - track->start_dts;
+                track->track_duration = next->dts + st->mux_ts_offset - track->start_dts;
                 if (next->pts != AV_NOPTS_VALUE)
-                    track->end_pts = next->pts;
+                    track->end_pts = next->pts + st->mux_ts_offset;
                 else
-                    track->end_pts = next->dts;
+                    track->end_pts = next->dts + st->mux_ts_offset;
             }
         }
     }
