@@ -3262,7 +3262,8 @@ static int mov_flush_fragment(AVFormatContext *s, int force)
     for (i = 0; i < s->nb_streams; i++) {
         MOVTrack *track = &mov->tracks[i];
         if (!track->end_reliable) {
-            const AVPacket *next = ff_interleaved_peek(s, i);
+            AVPacket buf;
+            const AVPacket *next = ff_interleaved_peek(s, i, &buf, 1);
             if (next) {
                 track->track_duration = next->dts - track->start_dts;
                 if (next->pts != AV_NOPTS_VALUE)

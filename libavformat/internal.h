@@ -449,6 +449,7 @@ void ff_format_io_close(AVFormatContext *s, AVIOContext **pb);
  * @return a pointer to the next packet, or NULL if no packet is queued
  *         for this stream.
  */
-const AVPacket *ff_interleaved_peek(AVFormatContext *s, int stream);
+const AVPacket *ff_interleaved_peek(AVFormatContext *s, int stream,
+                                    AVPacket *buf, int add_offset);
 
 #endif /* AVFORMAT_INTERNAL_H */
