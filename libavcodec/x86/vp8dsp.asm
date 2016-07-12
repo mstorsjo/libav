@@ -24,6 +24,9 @@
 
 SECTION_RODATA
 
+
+foobar: dw 1, 2, 3, 4, 5, 6, 7, 8
+
 fourtap_filter_hw_m: times 4 dw  -6, 123
                      times 4 dw  12,  -1
                      times 4 dw  -9,  93
