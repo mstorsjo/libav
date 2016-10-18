@@ -118,6 +118,8 @@ void ff_hevc_dsp_init(HEVCDSPContext *hpc, int bit_depth);
 void ff_hevc_dsp_init_ppc(HEVCDSPContext *c, const int bit_depth);
 void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth);
 
+void ff_hevc_dsp_init_arm(HEVCDSPContext *c, const int bit_depth);
+
 extern const int16_t ff_hevc_epel_coeffs[7][16];
 extern const int8_t ff_hevc_epel_coeffs8[7][16];
 extern const int16_t ff_hevc_qpel_coeffs[3][8];
