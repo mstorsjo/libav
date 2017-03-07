@@ -18,8 +18,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <string.h>
+
 #include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
+#include "libavutil/common.h"
 #include "libavutil/frame.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/internal.h"
@@ -92,7 +95,7 @@ int attribute_align_arg avcodec_encode_audio2(AVCodecContext *avctx,
                                               const AVFrame *frame,
                                               int *got_packet_ptr)
 {
-    AVFrame tmp;
+    AVFrame tmp, tmp2;
     AVFrame *padded_frame = NULL;
     int ret;
     int user_packet = !!avpkt->data;
@@ -131,6 +134,75 @@ int attribute_align_arg avcodec_encode_audio2(AVCodecContext *avctx,
         AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_AUDIO_SERVICE_TYPE);
         if (sd && sd->size >= sizeof(enum AVAudioServiceType))
             avctx->audio_service_type = *(enum AVAudioServiceType*)sd->data;
+    }
+
+    if (avctx->trim_preroll) {
+        struct AudioFrameBuffer *cur_buffer, *next_buffer;
+        cur_buffer  = &avctx->internal->audio_frames[avctx->internal->cur_audio_frame];
+        next_buffer = &avctx->internal->audio_frames[!avctx->internal->cur_audio_frame];
+        if (frame) {
+            if (avctx->internal->samples_to_skip >= frame->nb_samples) {
+                avctx->internal->samples_to_skip -= frame->nb_samples;
+                av_packet_unref(avpkt);
+                av_init_packet(avpkt);
+                return 0;
+            }
+            if (avctx->internal->samples_to_skip || cur_buffer->nb_samples) {
+                int src_offset = 0;
+                int samples;
+
+                if (avctx->internal->samples_to_skip) {
+                    src_offset = avctx->internal->samples_to_skip;
+                    avctx->internal->samples_to_skip = 0;
+                }
+
+                if (cur_buffer->nb_samples == 0) {
+                    cur_buffer->pts = frame->pts + av_rescale_q(src_offset, avctx->time_base, (AVRational){ 1, avctx->sample_rate });
+                }
+                samples = FFMIN(avctx->frame_size - cur_buffer->nb_samples,
+                                frame->nb_samples - src_offset);
+                av_samples_copy(cur_buffer->data, frame->extended_data, cur_buffer->nb_samples, src_offset, samples, avctx->channels, avctx->sample_fmt);
+                cur_buffer->nb_samples += samples;
+                src_offset += samples;
+                if (cur_buffer->nb_samples != avctx->frame_size) {
+                    av_packet_unref(avpkt);
+                    av_init_packet(avpkt);
+                    return 0;
+                }
+                tmp2               = *frame;
+                tmp2.extended_data = cur_buffer->data;
+                tmp2.nb_samples    = avctx->frame_size;
+                tmp2.pts           = cur_buffer->pts;
+                memcpy(tmp2.data, tmp2.extended_data,
+                       FFMIN(AV_NUM_DATA_POINTERS, avctx->channels) * sizeof(uint8_t*));
+
+                avctx->internal->cur_audio_frame = !avctx->internal->cur_audio_frame;
+                next_buffer->nb_samples = 0;
+
+                if (src_offset < frame->nb_samples) {
+                    samples = FFMIN(frame->nb_samples - src_offset, avctx->frame_size); // This should always be less than avctx->frame_size
+                    next_buffer->pts = frame->pts + av_rescale_q(src_offset, avctx->time_base, (AVRational){ 1, avctx->sample_rate });
+                    av_samples_copy(next_buffer->data, frame->extended_data, next_buffer->nb_samples, src_offset, samples, avctx->channels, avctx->sample_fmt);
+                    next_buffer->nb_samples += samples;
+                }
+
+                frame = &tmp2;
+            }
+        }
+        if (!frame && cur_buffer->nb_samples > 0) {
+            memset(&tmp2, 0, sizeof(tmp2));
+            tmp2.linesize[0]    = cur_buffer->linesize[0];
+            tmp2.extended_data  = cur_buffer->data;
+            tmp2.nb_samples     = cur_buffer->nb_samples;
+            tmp2.format         = avctx->sample_fmt;
+            tmp2.sample_rate    = avctx->sample_rate;
+            tmp2.channel_layout = avctx->channel_layout;
+            tmp2.pts = cur_buffer->pts;
+            memcpy(tmp2.data, tmp2.extended_data,
+                   FFMIN(AV_NUM_DATA_POINTERS, avctx->channels) * sizeof(uint8_t*));
+            cur_buffer->nb_samples = 0;
+            frame = &tmp2;
+        }
     }
 
     /* check for valid frame size */

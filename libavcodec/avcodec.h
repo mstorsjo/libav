@@ -3163,6 +3163,8 @@ typedef struct AVCodecContext {
      * contexts used must be created on the same device.
      */
     AVBufferRef *hw_device_ctx;
+
+    int trim_preroll;
 } AVCodecContext;
 
 /**

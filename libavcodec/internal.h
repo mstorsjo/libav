@@ -182,6 +182,15 @@ typedef struct AVCodecInternal {
      * of the packet (that should be submitted in the next decode call */
     size_t compat_decode_partial_size;
     AVFrame *compat_decode_frame;
+
+    int samples_to_skip;
+    struct AudioFrameBuffer {
+       uint8_t **data;
+       int *linesize;
+       int64_t pts;
+       int nb_samples;
+    } audio_frames[2];
+    int cur_audio_frame;
 } AVCodecInternal;
 
 struct AVCodecDefault {

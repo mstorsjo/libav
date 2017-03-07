@@ -660,6 +660,27 @@ FF_ENABLE_DEPRECATION_WARNINGS
         }
     }
 
+    if (avctx->trim_preroll) {
+        int i;
+        for (i = 0; i < 2; i++) {
+            avctx->internal->audio_frames[i].data = av_malloc_array(avctx->channels, sizeof(uint8_t *));
+            avctx->internal->audio_frames[i].linesize = av_malloc_array(avctx->channels, sizeof(int *));
+            if (!avctx->internal->audio_frames[i].data ||
+                !avctx->internal->audio_frames[i].linesize) {
+                ret = AVERROR(ENOMEM);
+                goto free_and_end;
+            }
+            ret = av_samples_alloc(avctx->internal->audio_frames[i].data,
+                                   avctx->internal->audio_frames[i].linesize,
+                                   avctx->channels, avctx->frame_size,
+                                   avctx->sample_fmt, 0);
+            if (ret < 0)
+                goto free_and_end;
+        }
+        avctx->internal->samples_to_skip = avctx->initial_padding;
+        avctx->initial_padding = 0;
+    }
+
 #if FF_API_AUDIOENC_DELAY
     if (av_codec_is_encoder(avctx->codec))
         avctx->delay = avctx->initial_padding;
@@ -784,6 +805,13 @@ av_cold int avcodec_close(AVCodecContext *avctx)
         av_freep(&avctx->internal->hwaccel_priv_data);
 
         ff_decode_bsfs_uninit(avctx);
+
+        for (i = 0; i < 2; i++) {
+            if (avctx->internal->audio_frames[i].data)
+                av_free(avctx->internal->audio_frames[i].data[0]);
+            av_free(avctx->internal->audio_frames[i].data);
+            av_free(avctx->internal->audio_frames[i].linesize);
+        }
 
         av_freep(&avctx->internal);
     }

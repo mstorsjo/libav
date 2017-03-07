@@ -532,6 +532,7 @@ static const AVOption avcodec_options[] = {
 {"side_data_only_packets", NULL, OFFSET(side_data_only_packets), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 1, A|V|E },
 #endif
 {"apply_cropping", NULL, OFFSET(apply_cropping), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 1, V | D },
+{"trim_preroll", NULL, OFFSET(trim_preroll), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, A | E },
 {NULL},
 };
 
