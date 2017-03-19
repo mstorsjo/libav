@@ -157,21 +157,21 @@ endfunc
 .endm
 
 .macro tr_8x4 shift, in0, in1, in2, in3, in4, in5, in6, in7, tmp
-        tr_4x4_8 \in0, \in1, \in2, \in3, q8, q9, q10, q11, q12, q13, q14, q15
+        tr_4x4_8 \in0, \in2, \in4, \in6, q8, q9, q10, q11, q12, q13, q14, q15
  
-        vmull.s16 q12, \in4, \in0[0]
-        vmull.s16 q13, \in4, \in0[1]
-        vmull.s16 q14, \in4, \in0[2]
-        vmull.s16 q15, \in4, \in0[3]
-        sum_sub q12, \in5, \in0[1], +
-        sum_sub q13, \in5, \in0[3], -
-        sum_sub q14, \in5, \in0[0], -
-        sum_sub q15, \in5, \in0[2], -
+        vmull.s16 q12, \in1, \in0[0]
+        vmull.s16 q13, \in1, \in0[1]
+        vmull.s16 q14, \in1, \in0[2]
+        vmull.s16 q15, \in1, \in0[3]
+        sum_sub q12, \in3, \in0[1], +
+        sum_sub q13, \in3, \in0[3], -
+        sum_sub q14, \in3, \in0[0], -
+        sum_sub q15, \in3, \in0[2], -
 
-        sum_sub q12, \in6, \in0[2], +
-        sum_sub q13, \in6, \in0[0], -
-        sum_sub q14, \in6, \in0[3], +
-        sum_sub q15, \in6, \in0[1], +
+        sum_sub q12, \in5, \in0[2], +
+        sum_sub q13, \in5, \in0[0], -
+        sum_sub q14, \in5, \in0[3], +
+        sum_sub q15, \in5, \in0[1], +
 
         sum_sub q12, \in7, \in0[3], +
         sum_sub q13, \in7, \in0[2], -
@@ -201,20 +201,21 @@ function ff_hevc_idct_8x8_\bitdepth\()_neon, export=1
         mov      r2,  #16
         mov      r1,  r0
         add      r3,  r0,  #8
+        @ Load the left column into d0-d7 and the right column into d8-d15
         vld1.s16 {d0},       [r1], r2
         vld1.s16 {d8},       [r3], r2
-        vld1.s16 {d4},       [r1], r2
-        vld1.s16 {d12},      [r3], r2
         vld1.s16 {d1},       [r1], r2
         vld1.s16 {d9},       [r3], r2
-        vld1.s16 {d5},       [r1], r2
-        vld1.s16 {d13},      [r3], r2
         vld1.s16 {d2},       [r1], r2
         vld1.s16 {d10},      [r3], r2
-        vld1.s16 {d6},       [r1], r2
-        vld1.s16 {d14},      [r3], r2
         vld1.s16 {d3},       [r1], r2
         vld1.s16 {d11},      [r3], r2
+        vld1.s16 {d4},       [r1], r2
+        vld1.s16 {d12},      [r3], r2
+        vld1.s16 {d5},       [r1], r2
+        vld1.s16 {d13},      [r3], r2
+        vld1.s16 {d6},       [r1], r2
+        vld1.s16 {d14},      [r3], r2
         vld1.s16 {d7},       [r1], r2
         vld1.s16 {d15},      [r3], r2
 
@@ -225,31 +226,50 @@ function ff_hevc_idct_8x8_\bitdepth\()_neon, export=1
         tr_8x4 7, d0, d1, d10, d11, d12, d13, d14, d15, q5
         vswp q0, q4
 
+        @ Transpose each 4x4 block, and swap how d4-d7 and d8-d11 are used.
+        @ Layout before:
+        @ d0  d8
+        @ d1  d9
+        @ d2  d10
+        @ d3  d11
+        @ d4  d12
+        @ d5  d13
+        @ d6  d14
+        @ d7  d15
         transpose_8x8 d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15
+        @ Now the layout is:
+        @ d0  d4
+        @ d1  d5
+        @ d2  d6
+        @ d3  d7
+        @ d8  d12
+        @ d9  d13
+        @ d10 d14
+        @ d11 d15
 
-        tr_8x4 20 - \bitdepth, d0, d2, d8, d10, d1, d3, d9, d11, q1
-        tr_8x4 20 - \bitdepth, d4, d6, d12, d14, d5, d7, d13, d15, q3
+        tr_8x4 20 - \bitdepth, d0, d1, d2, d3, d8, d9, d10, d11, q1
+        tr_8x4 20 - \bitdepth, d4, d5, d6, d7, d12, d13, d14, d15, q3
 
-        transpose_8x8 d0, d2, d8, d10, d1, d3, d9, d11, d4, d6, d12, d14, d5, d7, d13, d15
+        transpose_8x8 d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15
 
         mov      r2,  #16
         mov      r1,  r0
         add      r3,  r0,  #8
         vst1.s16 {d0},       [r1], r2
-        vst1.s16 {d1},       [r3], r2
-        vst1.s16 {d2},       [r1], r2
-        vst1.s16 {d3},       [r3], r2
-        vst1.s16 {d8},       [r1], r2
+        vst1.s16 {d8},       [r3], r2
+        vst1.s16 {d1},       [r1], r2
         vst1.s16 {d9},       [r3], r2
-        vst1.s16 {d10},      [r1], r2
+        vst1.s16 {d2},       [r1], r2
+        vst1.s16 {d10},      [r3], r2
+        vst1.s16 {d3},       [r1], r2
         vst1.s16 {d11},      [r3], r2
         vst1.s16 {d4},       [r1], r2
-        vst1.s16 {d5},       [r3], r2
-        vst1.s16 {d6},       [r1], r2
-        vst1.s16 {d7},       [r3], r2
-        vst1.s16 {d12},      [r1], r2
+        vst1.s16 {d12},      [r3], r2
+        vst1.s16 {d5},       [r1], r2
         vst1.s16 {d13},      [r3], r2
-        vst1.s16 {d14},      [r1], r2
+        vst1.s16 {d6},       [r1], r2
+        vst1.s16 {d14},      [r3], r2
+        vst1.s16 {d7},       [r1], r2
         vst1.s16 {d15},      [r3], r2
 
         vpop {q4-q7}
