@@ -74,20 +74,23 @@ endconst
 
 .macro tr_4x4_8 in0, in1, in2, in3, out0, out1, out2, out3, tmp0, tmp1, tmp2, tmp3
          vshll.s16 \tmp0, \in0, #6
-         movrel r1, trans
-         vld1.s16 {\in0}, [r1, :64]
-         vmull.s16 \tmp2, \in1, \in0[1]
+         vld1.s16 {\in0}, [r1, :64]!
          vmov \tmp1, \tmp0
+         vmull.s16 \tmp2, \in1, \in0[1]
          vmull.s16 \tmp3, \in1, \in0[3]
          vmlal.s16 \tmp0, \in2, \in0[0] @e0
          vmlsl.s16 \tmp1, \in2, \in0[0] @e1
          vmlal.s16 \tmp2, \in3, \in0[3] @o0
          vmlsl.s16 \tmp3, \in3, \in0[1] @o1
 
+         vld1.s16 {\in0}, [r1, :64]
+
          vadd.s32 \out0, \tmp0, \tmp2
          vadd.s32 \out1, \tmp1, \tmp3
          vsub.s32 \out2, \tmp1, \tmp3
          vsub.s32 \out3, \tmp0, \tmp2
+
+         sub      r1,  r1,  #8
 .endm
 
 @ Do a 4x4 transpose, using q registers for the subtransposes that don't
@@ -156,9 +159,6 @@ endfunc
 .macro tr_8x4 shift, in0, in1, in2, in3, in4, in5, in6, in7, tmp
         tr_4x4_8 \in0, \in1, \in2, \in3, q8, q9, q10, q11, q12, q13, q14, q15
  
-        movrel r1, trans+8
-        vld1.s16 {\in0},    [r1, :64]
-
         vmull.s16 q12, \in4, \in0[0]
         vmull.s16 q13, \in4, \in0[1]
         vmull.s16 q14, \in4, \in0[2]
@@ -217,6 +217,8 @@ function ff_hevc_idct_8x8_\bitdepth\()_neon, export=1
         vld1.s16 {d11},      [r3], r2
         vld1.s16 {d7},       [r1], r2
         vld1.s16 {d15},      [r3], r2
+
+        movrel r1, trans
 
         tr_8x4 7, d0, d1, d2, d3, d4, d5, d6, d7, q1
         vswp q0, q4
