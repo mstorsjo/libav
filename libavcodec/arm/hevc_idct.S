@@ -156,43 +156,50 @@ endfunc
         transpose8_4x4 \l4, \l5, \l6, \l7
 .endm
 
-.macro tr_8x4 shift, in0, in1, in2, in3, in4, in5, in6, in7, tmp
+.macro tr_8x4 shift, in0, in1, in2, in3, in4, in5, in6, in7
         tr_4x4_8 \in0, \in2, \in4, \in6, q8, q9, q10, q11, q12, q13, q14, q15
  
         vmull.s16 q12, \in1, \in0[0]
         vmull.s16 q13, \in1, \in0[1]
         vmull.s16 q14, \in1, \in0[2]
-        vmull.s16 q15, \in1, \in0[3]
         sum_sub q12, \in3, \in0[1], +
         sum_sub q13, \in3, \in0[3], -
         sum_sub q14, \in3, \in0[0], -
-        sum_sub q15, \in3, \in0[2], -
 
         sum_sub q12, \in5, \in0[2], +
         sum_sub q13, \in5, \in0[0], -
         sum_sub q14, \in5, \in0[3], +
-        sum_sub q15, \in5, \in0[1], +
 
         sum_sub q12, \in7, \in0[3], +
         sum_sub q13, \in7, \in0[2], -
         sum_sub q14, \in7, \in0[1], +
+
+        @ This scale macro is written out and split, so that we can use q15
+        @ as tmp_q, but only writing back into in5 after using in5 as input
+        @ for the last time.
+@        scale q10,  q14, #\shift, \in2, \in5, q15
+        vadd.s32 q15, q10, q14
+        vsub.s32 q10, q10, q14
+        vqrshrn.s32 \in2, q15, \shift
+
+        vmull.s16 q15, \in1, \in0[3]
+        sum_sub q15, \in3, \in0[2], -
+        sum_sub q15, \in5, \in0[1], +
         sum_sub q15, \in7, \in0[0], -
 
-        vadd.s32 \tmp, q8, q12
+        vqrshrn.s32 \in5, q10,  \shift
+
+        vadd.s32 q10, q8, q12
         vsub.s32 q8,  q8, q12
         vadd.s32 q12, q9, q13
         vsub.s32 q9,  q9, q13
-        vadd.s32 q13, q10, q14
-        vsub.s32 q10, q10, q14
         vadd.s32 q14, q11, q15
         vsub.s32 q11, q11, q15
 
-        vqrshrn.s32 \in0, \tmp, \shift
+        vqrshrn.s32 \in0, q10, \shift
         vqrshrn.s32 \in7, q8,  \shift
         vqrshrn.s32 \in1, q12, \shift
         vqrshrn.s32 \in6, q9,  \shift
-        vqrshrn.s32 \in2, q13, \shift
-        vqrshrn.s32 \in5, q10, \shift
         vqrshrn.s32 \in3, q14, \shift
         vqrshrn.s32 \in4, q11, \shift
 .endm
@@ -234,9 +241,9 @@ function ff_hevc_idct_8x8_\bitdepth\()_neon, export=1
 
         movrel r1, trans
 
-        tr_8x4 7, d0, d1, d2, d3, d4, d5, d6, d7, q1
+        tr_8x4 7, d0, d1, d2, d3, d4, d5, d6, d7
         vswp q0, q4
-        tr_8x4 7, d0, d1, d10, d11, d12, d13, d14, d15, q5
+        tr_8x4 7, d0, d1, d10, d11, d12, d13, d14, d15
         vswp q0, q4
 
         @ Transpose each 4x4 block, and swap how d4-d7 and d8-d11 are used.
@@ -260,8 +267,8 @@ function ff_hevc_idct_8x8_\bitdepth\()_neon, export=1
         @ d10 d14
         @ d11 d15
 
-        tr_8x4 20 - \bitdepth, d0, d1, d2, d3, d8, d9, d10, d11, q1
-        tr_8x4 20 - \bitdepth, d4, d5, d6, d7, d12, d13, d14, d15, q3
+        tr_8x4 20 - \bitdepth, d0, d1, d2, d3, d8, d9, d10, d11
+        tr_8x4 20 - \bitdepth, d4, d5, d6, d7, d12, d13, d14, d15
 
         transpose_8x8 d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15
 
