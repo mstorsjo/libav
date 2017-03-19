@@ -178,10 +178,23 @@ endfunc
         sum_sub q14, \in7, \in0[1], +
         sum_sub q15, \in7, \in0[0], -
 
-        scale q8, q12, #\shift, \in0, \in7, \tmp
-        scale q9, q13, #\shift, \in1, \in6, q8
-        scale q10,  q14, #\shift, \in2, \in5, q8
-        scale q11,  q15, #\shift, \in3, \in4, q8
+        vadd.s32 \tmp, q8, q12
+        vsub.s32 q8,  q8, q12
+        vadd.s32 q12, q9, q13
+        vsub.s32 q9,  q9, q13
+        vadd.s32 q13, q10, q14
+        vsub.s32 q10, q10, q14
+        vadd.s32 q14, q11, q15
+        vsub.s32 q11, q11, q15
+
+        vqrshrn.s32 \in0, \tmp, \shift
+        vqrshrn.s32 \in7, q8,  \shift
+        vqrshrn.s32 \in1, q12, \shift
+        vqrshrn.s32 \in6, q9,  \shift
+        vqrshrn.s32 \in2, q13, \shift
+        vqrshrn.s32 \in5, q10, \shift
+        vqrshrn.s32 \in3, q14, \shift
+        vqrshrn.s32 \in4, q11, \shift
 .endm
 
 .macro store in0, in1, in2, in3, horiz, step
