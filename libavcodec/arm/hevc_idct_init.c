@@ -39,12 +39,12 @@ av_cold void ff_hevc_dsp_init_arm(HEVCDSPContext *c, int bit_depth)
         if (bit_depth == 8) {
             c->idct[0] = ff_hevc_idct_4x4_8_neon;
             c->idct[1] = ff_hevc_idct_8x8_8_neon;
-            c->idct[2] = ff_hevc_idct_16x16_8_neon;
+//            c->idct[2] = ff_hevc_idct_16x16_8_neon;
         }
         if (bit_depth == 10) {
             c->idct[0] = ff_hevc_idct_4x4_10_neon;
             c->idct[1] = ff_hevc_idct_8x8_10_neon;
-            c->idct[2] = ff_hevc_idct_16x16_10_neon;
+//            c->idct[2] = ff_hevc_idct_16x16_10_neon;
         }
     }
 }
