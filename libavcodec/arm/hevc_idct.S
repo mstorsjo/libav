@@ -221,24 +221,24 @@ function ff_hevc_idct_8x8_\bitdepth\()_neon, export=1
         tr_8x4 7, d0, d1, d2, d3, d4, d5, d6, d7, q1
         vswp q0, q4
         tr_8x4 7, d0, d1, d10, d11, d12, d13, d14, d15, q5
+        vswp q0, q4
 
-        transpose_8x8 d8, d9, d2, d3, d4, d5, d6, d7, d0, d1, d10, d11, d12, d13, d14, d15
+        transpose_8x8 d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15
 
-        vswp d8, d0
-        tr_8x4 20 - \bitdepth, d0, d2, d8, d10, d9, d3, d1, d11, q1
+        tr_8x4 20 - \bitdepth, d0, d2, d8, d10, d1, d3, d9, d11, q1
         tr_8x4 20 - \bitdepth, d4, d6, d12, d14, d5, d7, d13, d15, q3
 
-        transpose_8x8 d0, d2, d8, d10, d9, d3, d1, d11, d4, d6, d12, d14, d5, d7, d13, d15
+        transpose_8x8 d0, d2, d8, d10, d1, d3, d9, d11, d4, d6, d12, d14, d5, d7, d13, d15
 
         mov      r2,  #16
         mov      r1,  r0
         add      r3,  r0,  #8
         vst1.s16 {d0},       [r1], r2
-        vst1.s16 {d9},       [r3], r2
+        vst1.s16 {d1},       [r3], r2
         vst1.s16 {d2},       [r1], r2
         vst1.s16 {d3},       [r3], r2
         vst1.s16 {d8},       [r1], r2
-        vst1.s16 {d1},       [r3], r2
+        vst1.s16 {d9},       [r3], r2
         vst1.s16 {d10},      [r1], r2
         vst1.s16 {d11},      [r3], r2
         vst1.s16 {d4},       [r1], r2
