@@ -159,20 +159,20 @@ endfunc
 .macro tr_8x4 shift, in0, in1, in2, in3, in4, in5, in6, in7
         tr_4x4_8 \in0, \in2, \in4, \in6, q8, q9, q10, q11, q12, q13, q14, q15
  
+        vmull.s16 q14, \in1, \in0[2]
         vmull.s16 q12, \in1, \in0[0]
         vmull.s16 q13, \in1, \in0[1]
-        vmull.s16 q14, \in1, \in0[2]
+        sum_sub q14, \in3, \in0[0], -
         sum_sub q12, \in3, \in0[1], +
         sum_sub q13, \in3, \in0[3], -
-        sum_sub q14, \in3, \in0[0], -
 
+        sum_sub q14, \in5, \in0[3], +
         sum_sub q12, \in5, \in0[2], +
         sum_sub q13, \in5, \in0[0], -
-        sum_sub q14, \in5, \in0[3], +
 
+        sum_sub q14, \in7, \in0[1], +
         sum_sub q12, \in7, \in0[3], +
         sum_sub q13, \in7, \in0[2], -
-        sum_sub q14, \in7, \in0[1], +
 
         @ This scale macro is written out and split, so that we can use q15
         @ as tmp_q, but only writing back into in5 after using in5 as input
