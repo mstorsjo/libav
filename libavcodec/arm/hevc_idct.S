@@ -219,10 +219,12 @@ function ff_hevc_idct_8x8_\bitdepth\()_neon, export=1
         vpush {q4-q7}
 
         mov      r1,  r0
-        vld1.s16 {q0-q1}, [r1,:128]!
-        vld1.s16 {q2-q3}, [r1,:128]!
-        vld1.s16 {q4-q5}, [r1,:128]!
-        vld1.s16 {q6-q7}, [r1,:128]!
+        mov      r2,  #64
+        add      r3,  r0,  #32
+        vld1.s16 {q0-q1}, [r1,:128], r2
+        vld1.s16 {q2-q3}, [r3,:128], r2
+        vld1.s16 {q4-q5}, [r1,:128], r2
+        vld1.s16 {q6-q7}, [r3,:128], r2
 
         movrel r1, trans
 
@@ -257,10 +259,13 @@ function ff_hevc_idct_8x8_\bitdepth\()_neon, export=1
 
         transpose_8x8 d0, d2, d4, d6, d8, d10, d12, d14, d1, d3, d5, d7, d9, d11, d13, d15
 
-        vst1.s16 {q0-q1}, [r0,:128]!
-        vst1.s16 {q2-q3}, [r0,:128]!
-        vst1.s16 {q4-q5}, [r0,:128]!
-        vst1.s16 {q6-q7}, [r0,:128]!
+        mov      r1,  r0
+        mov      r2,  #64
+        add      r3,  r0,  #32
+        vst1.s16 {q0-q1}, [r1,:128], r2
+        vst1.s16 {q2-q3}, [r3,:128], r2
+        vst1.s16 {q4-q5}, [r1,:128], r2
+        vst1.s16 {q6-q7}, [r3,:128], r2
 
         vpop {q4-q7}
     bx lr
