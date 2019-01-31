@@ -685,6 +685,8 @@ av_cold void ff_vp78dsp_init(VP8DSPContext *dsp)
         ff_vp78dsp_init_ppc(dsp);
     if (ARCH_X86)
         ff_vp78dsp_init_x86(dsp);
+    if (ARCH_AARCH64)
+        ff_vp78dsp_init_aarch64(dsp);
 }
 
 #if CONFIG_VP7_DECODER
@@ -743,5 +745,7 @@ av_cold void ff_vp8dsp_init(VP8DSPContext *dsp)
         ff_vp8dsp_init_arm(dsp);
     if (ARCH_X86)
         ff_vp8dsp_init_x86(dsp);
+    if (ARCH_AARCH64)
+        ff_vp8dsp_init_aarch64(dsp);
 }
 #endif /* CONFIG_VP8_DECODER */
