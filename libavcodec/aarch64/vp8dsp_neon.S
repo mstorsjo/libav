@@ -759,7 +759,7 @@ function ff_put_vp8_epel16_v6_neon, export=1
 
         sxtw            x4,  w4
         sxtw            x6,  w6
-        movrel          x17,  subpel_filters-16
+        movrel          x17,  subpel_filters, -16
         add             x6,  x17,  x6, lsl #4  // y
         ld1             {v0.8h},     [x6]
 1:
@@ -788,7 +788,7 @@ function ff_put_vp8_epel16_h6_neon, export=1
         sxtw            x5,  w5 // x
 
         // first pass (horizontal):
-        movrel          x17,  subpel_filters-16
+        movrel          x17,  subpel_filters, -16
         add             x5,  x17,  x5, lsl #4 // x
         ld1             {v0.8h},  [x5]
 1:
@@ -807,7 +807,7 @@ function ff_put_vp8_epel16_h6v6_neon, export=1
         sub             x2,  x2,  #2
 
         // first pass (horizontal):
-        movrel          x17,  subpel_filters-16
+        movrel          x17,  subpel_filters, -16
         sxtw            x5,  w5 // x
         add             x16,  x17,  x5, lsl #4 // x
         sub             sp,  sp,  #336+16
@@ -854,7 +854,7 @@ function ff_put_vp8_epel8_h6v6_neon, export=1
         sxtw            x4,  w4
 
         // first pass (horizontal):
-        movrel          x17,  subpel_filters-16
+        movrel          x17,  subpel_filters, -16
         sxtw            x5,  w5
         add             x5,  x17,  x5, lsl #4 // x
         sub             sp,  sp,  #168+16
@@ -900,7 +900,7 @@ function ff_put_vp8_epel8_h4v6_neon, export=1
         sxtw            x4,  w4
 
         // first pass (horizontal):
-        movrel          x17,  subpel_filters-16
+        movrel          x17,  subpel_filters, -16
         sxtw            x5,  w5
         add             x5,  x17,  x5, lsl #4 // x
         sub             sp,  sp,  #168+16
@@ -947,7 +947,7 @@ function ff_put_vp8_epel8_h4v4_neon, export=1
 
 
         // first pass (horizontal):
-        movrel          x17,  subpel_filters-16
+        movrel          x17,  subpel_filters, -16
         sxtw            x5,  w5
         add             x5,  x17,  x5, lsl #4 // x
         sub             sp,  sp,  #168+16
@@ -992,7 +992,7 @@ function ff_put_vp8_epel8_h6v4_neon, export=1
 
 
         // first pass (horizontal):
-        movrel          x17,  subpel_filters-16
+        movrel          x17,  subpel_filters, -16
         sxtw            x5,  w5
         add             x5,  x17,  x5, lsl #4 // x
         sub             sp,  sp,  #168+16
